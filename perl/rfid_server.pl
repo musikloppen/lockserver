@@ -1,25 +1,23 @@
 #!/usr/bin/perl -w
 
 use strict;
+use warnings;
 use Data::Dumper;
 use Device::SerialPort;
 use Sys::Syslog;
-use AnyEvent::JSONRPC::TCP::Client;
+use Redis;
 use DBI;
 use Time::HiRes qw( usleep );
 
-use lib qw( /etc/apache2/perl );
+use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
-
-#use constant MY_SERVER_ROOT => '/var/www/lock_server';
-my $MY_SERVER_ROOT = '/var/www/lock_server';
 
 openlog($0, "ndelay,pid", "local0");
 syslog('info', "starting...");
 
 # connect to db
 my $dbh;
-if($dbh = LockServer::Db->my_connect) {
+if ($dbh = LockServer::Db->my_connect) {
 	$dbh->{'mysql_auto_reconnect'} = 1;
 	syslog('info', "connected to db");
 }
@@ -29,15 +27,18 @@ else {
 }
 
 # get defaults from db
-my $RPC_PORT = get_defaults('rpc_port') || 4004;
 my $SERIAL_PORT_NAME = get_defaults('serial_port_name') || '/dev/ttyAMA0';
 
 $SIG{INT} = \&stop_server;
 
-# main
+# Initialize synchronous Redis client
+my $redis_host = $ENV{REDIS_HOST} || 'lock-redis';
+my $redis = Redis->new(server => "$redis_host:6379");
+
+# Configure serial hardware boundaries
 my ($port_obj, $count_in, $c);
 my $rfid = '';
-$port_obj = new Device::SerialPort($SERIAL_PORT_NAME) || die "Can't open $SERIAL_PORT_NAME: $!\n"; #, $quiet, $lockfile)
+$port_obj = new Device::SerialPort($SERIAL_PORT_NAME) || die "Can't open $SERIAL_PORT_NAME: $!\n";
 $port_obj->baudrate(9600);
 $port_obj->databits(8);
 $port_obj->stopbits(1);
@@ -47,7 +48,6 @@ $port_obj->read_char_time(0);
 
 syslog('info', "$0 started");
 while (1) {
-
 	($count_in, $c) = $port_obj->read(1);
 	next unless ($count_in);
 	
@@ -55,23 +55,21 @@ while (1) {
 		$rfid .= $c;
 	}
 	else {
-		# we got a rfid tag...
+		# Process completed hardware sequence
 		$rfid =~ s/.*([\dabcdef]{10}).*/$1/i;
-		my $client = AnyEvent::JSONRPC::TCP::Client->new(
-			host => '127.0.0.1',
-			port => $RPC_PORT,
-		);
-		$client->call( unlock_rfid => $rfid )->recv;
+		
+		# Stream the action message payload over Redis Bus
+		$redis->publish('lock_events', "unlock_rfid:$rfid");
+		
 		usleep(get_defaults('open_time') * 1000_000);
-		# discard rfid received while we are open
+		
+		# Flush inputs accumulated during active operation
 		$port_obj->lookclear;
 		do {
 			($count_in, $c) = $port_obj->read(1);
-		}
-		while ($count_in);
+		} while ($count_in);
 		$rfid = '';
 	}
-
 }
 
 
@@ -87,8 +85,15 @@ sub stop_server {
 sub get_defaults {
 	my $pref_name = shift;
 	my $dbh_thr = LockServer::Db->my_connect or warn $!;
-	my $sth_thr = $dbh_thr->prepare(qq[SELECT `value` FROM default_prefs WHERE `name` = ] . $dbh_thr->quote($pref_name));
-	if ($sth_thr->execute) {
+
+	my $query = qq[
+		SELECT `value` 
+		FROM default_prefs 
+		WHERE `name` = ?
+	];
+
+	my $sth_thr = $dbh_thr->prepare($query);
+	if ($sth_thr->execute($pref_name)) {
 		my ($pref) = $sth_thr->fetchrow;
 		$sth_thr->finish;
 		$dbh_thr->disconnect;
@@ -105,8 +110,15 @@ sub get_defaults {
 sub get_user_defaults {
 	my ($user, $pref_name) = @_;
 	my $dbh_thr = LockServer::Db->my_connect or warn $!;
-	my $sth_thr = $dbh_thr->prepare(qq[SELECT `$pref_name` FROM users WHERE username = ] . $dbh_thr->quote($user));
-	if ($sth_thr->execute) {
+
+	my $query = qq[
+		SELECT `$pref_name` 
+		FROM users 
+		WHERE username = ?
+	];
+
+	my $sth_thr = $dbh_thr->prepare($query);
+	if ($sth_thr->execute($user)) {
 		my ($pref) = $sth_thr->fetchrow;
 		$sth_thr->finish;
 		$dbh_thr->disconnect;
@@ -130,17 +142,17 @@ sub get_user_defaults {
 sub db_log {
 	my ($user, $rfid, $message, $source) = @_;
 	my $dbh_thr = LockServer::Db->my_connect or warn $!;
-	my $sth_thr = $dbh_thr->prepare(qq[INSERT INTO `log` (`user`, 
-																												`rfid`, 
-																												`action`, 
-																												`source`, 
-																												`time_stamp`) 
-																		 VALUES (] . $dbh_thr->quote($user) . ', ' . 
-																		 						 $dbh_thr->quote($rfid) . ', ' . 
-																		 						 $dbh_thr->quote($message) . ', ' .
-																		 						 $dbh_thr->quote($source) . ', ' .
-																		 						 'NOW())');
-	$sth_thr->execute || syslog('info', "can't log to db");
+
+	my $query = qq[
+		INSERT INTO `log` 
+			(`user`, `rfid`, `action`, `source`, `time_stamp`) 
+		VALUES 
+			(?, ?, ?, ?, NOW())
+	];
+
+	my $sth_thr = $dbh_thr->prepare($query);
+	$sth_thr->execute($user, $rfid, $message, $source) || syslog('info', "can't log to db");
+	
 	$sth_thr->finish;
 	$dbh_thr->disconnect;
 }

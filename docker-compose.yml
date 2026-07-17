@@ -4,8 +4,10 @@ services:
     container_name: lock_db
     hostname: lock-db
     restart: always
+    ports:
+      - "3306:3306"
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_PASS}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS}
       MARIADB_DATABASE: ${DB_NAME}
       MARIADB_USER: ${DB_USER}
       MARIADB_PASSWORD: ${DB_PASS}
