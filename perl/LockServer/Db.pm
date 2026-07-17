@@ -16,8 +16,8 @@ my $pass = $ENV{DB_PASS} || 'secret';
 my $dsn		= "DBI:mysql:database=$db;host=$host;port=$port";
 
 sub my_connect {
-	return DBI->connect($dsn, $user, $pass, { mysql_auto_reconnect => 1 }) or warn $!;
+	my $dbh = DBI->connect($dsn, $user, $pass, { mysql_auto_reconnect => 1 }) or warn $!;
+	return $dbh;
 }
 
 1;
-

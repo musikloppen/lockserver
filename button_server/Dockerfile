@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM balenalib/raspberry-pi-debian:bookworm
 
 # Install system dependencies and build tools
 RUN apt-get update && apt-get install -y \

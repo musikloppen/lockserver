@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 use Data::Dumper;
-use Device::SerialPort;
 use Sys::Syslog;
 use Redis;
 use DBI;
@@ -11,6 +10,13 @@ use Time::HiRes qw( usleep );
 
 use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
+
+my $DEBUG = $ENV{DEBUG} || 0;
+
+if (!$DEBUG) {
+	require Device::SerialPort;
+	Device::SerialPort->import();
+}
 
 openlog($0, "ndelay,pid", "local0");
 syslog('info', "starting...");
@@ -38,37 +44,47 @@ my $redis = Redis->new(server => "$redis_host:6379");
 # Configure serial hardware boundaries
 my ($port_obj, $count_in, $c);
 my $rfid = '';
-$port_obj = new Device::SerialPort($SERIAL_PORT_NAME) || die "Can't open $SERIAL_PORT_NAME: $!\n";
-$port_obj->baudrate(9600);
-$port_obj->databits(8);
-$port_obj->stopbits(1);
-$port_obj->parity("none");
-$port_obj->read_const_time(20);
-$port_obj->read_char_time(0);
+
+if (!$DEBUG) {
+	$port_obj = new Device::SerialPort($SERIAL_PORT_NAME) || die "Can't open $SERIAL_PORT_NAME: $!\n";
+	$port_obj->baudrate(9600);
+	$port_obj->databits(8);
+	$port_obj->stopbits(1);
+	$port_obj->parity("none");
+	$port_obj->read_const_time(20);
+	$port_obj->read_char_time(0);
+} else {
+	syslog('info', "[DEBUG MODE] Simulating runtime loop. Publishing dummy tag 'cafebabe12' every 10 seconds.");
+}
 
 syslog('info', "$0 started");
 while (1) {
-	($count_in, $c) = $port_obj->read(1);
-	next unless ($count_in);
-	
-	unless (ord($c) == 13) {
-		$rfid .= $c;
-	}
-	else {
-		# Process completed hardware sequence
-		$rfid =~ s/.*([\dabcdef]{10}).*/$1/i;
+	if (!$DEBUG) {
+		($count_in, $c) = $port_obj->read(1);
+		next unless ($count_in);
 		
-		# Stream the action message payload over Redis Bus
-		$redis->publish('lock_events', "unlock_rfid:$rfid");
-		
-		usleep(get_defaults('open_time') * 1000_000);
-		
-		# Flush inputs accumulated during active operation
-		$port_obj->lookclear;
-		do {
-			($count_in, $c) = $port_obj->read(1);
-		} while ($count_in);
-		$rfid = '';
+		unless (ord($c) == 13) {
+			$rfid .= $c;
+		}
+		else {
+			# Process completed hardware sequence
+			$rfid =~ s/.*([\dabcdef]{10}).*/$1/i;
+
+			# Stream the action message payload over Redis Bus
+			$redis->publish('lock_events', "unlock_rfid:$rfid");
+			usleep(get_defaults('open_time') * 1000_000);
+
+			# Flush inputs accumulated during active operation
+			$port_obj->lookclear;
+			do {
+				($count_in, $c) = $port_obj->read(1);
+			} while ($count_in);
+			$rfid = '';
+		}
+	} else {
+		# Mocking loop interval for testing environments
+		sleep(10);
+		$redis->publish('lock_events', "unlock_rfid:cafebabe12");
 	}
 }
 

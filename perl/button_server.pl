@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 use Data::Dumper;
-use Device::BCM2835;
 use Sys::Syslog;
 use Redis;
 use DBI;
@@ -11,6 +10,13 @@ use Time::HiRes qw( usleep );
 
 use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
+
+my $DEBUG = $ENV{DEBUG} || 0;
+
+if (!$DEBUG) {
+	require Device::BCM2835;
+	Device::BCM2835->import();
+}
 
 my $MY_SERVER_ROOT = '/var/www/lock_server';
 
@@ -39,30 +45,34 @@ $SIG{INT} = \&stop_server;
 my $redis_host = $ENV{REDIS_HOST} || 'lock-redis';
 my $redis = Redis->new(server => "$redis_host:6379");
 
-# set up lock interface
-Device::BCM2835::init() || die "Could not init library";
-# inputs
-Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_07,
-                           &Device::BCM2835::BCM2835_GPIO_FSEL_INPT);
-Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_11,
-                           &Device::BCM2835::BCM2835_GPIO_FSEL_INPT);
+if (!$DEBUG) {
+	# set up lock interface
+	Device::BCM2835::init() || die "Could not init library";
+
+	# inputs
+	Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_07,
+	                           &Device::BCM2835::BCM2835_GPIO_FSEL_INPT);
+	Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_11,
+	                           &Device::BCM2835::BCM2835_GPIO_FSEL_INPT);
+} else {
+	syslog('info', "[DEBUG MODE] Button input pooling disabled. Sleeping idly.");
+}
 
 syslog('info', "$0 started");
 while (1) {
-	if (Device::BCM2835::gpio_lev(&Device::BCM2835::RPI_V2_GPIO_P1_07) || Device::BCM2835::gpio_lev(&Device::BCM2835::RPI_V2_GPIO_P1_11)) {
-		
-		# Publish the button trigger event over the Redis message bus
-		$redis->publish('lock_events', "unlock_button");
-		
-		usleep(get_defaults('open_time') * 1000_000);
+	if (!$DEBUG) {
+		if (Device::BCM2835::gpio_lev(&Device::BCM2835::RPI_V2_GPIO_P1_07) || Device::BCM2835::gpio_lev(&Device::BCM2835::RPI_V2_GPIO_P1_11)) {
+			$redis->publish('lock_events', "unlock_button");
+			usleep(get_defaults('open_time') * 1000_000);
+		}
+		usleep(100_000);
+	} else {
+		# Keep running cleanly on Mac without infinite CPU execution loops
+		sleep(3600);
 	}
-	usleep(100_000);
 }
 
-
 ## END MAIN
-
-
 
 sub stop_server {
 	syslog('info', "$0 stopped");

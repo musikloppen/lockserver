@@ -5,7 +5,7 @@ services:
     hostname: lock-db
     restart: always
     ports:
-      - "3306:3306"
+      - "3307:3306"
     environment:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS}
       MARIADB_DATABASE: ${DB_NAME}
@@ -13,6 +13,12 @@ services:
       MARIADB_PASSWORD: ${DB_PASS}
     volumes:
       - ./db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASS}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       - lock_network
 
@@ -32,9 +38,12 @@ services:
     hostname: lock-unlock-server
     restart: always
     depends_on:
-      - db
-      - redis
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
     environment:
+      - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
@@ -42,6 +51,7 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
     devices:
+      # Only request devices on Linux when not debugging
       - "/dev/gpiomem:/dev/gpiomem"
       - "/dev/mem:/dev/mem"
     privileged: true
@@ -56,10 +66,14 @@ services:
     hostname: lock-rfid-server
     restart: always
     depends_on:
-      - db
-      - redis
-      - unlock_server
+      redis:
+        condition: service_started
+      unlock_server:
+        condition: service_started
+      db:
+        condition: service_healthy
     environment:
+      - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
@@ -79,10 +93,14 @@ services:
     hostname: lock-button-server
     restart: always
     depends_on:
-      - db
-      - redis
-      - unlock_server
+      redis:
+        condition: service_started
+      unlock_server:
+        condition: service_started
+      db:
+        condition: service_healthy
     environment:
+      - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
