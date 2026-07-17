@@ -1,0 +1,27 @@
+FROM debian:bookworm-slim
+
+# Install system dependencies and build tools
+RUN apt-get update && apt-get install -y \
+	build-essential \
+	wget \
+	libdbi-perl \
+	libdbd-mysql-perl \
+	libproc-simple-perl \
+	cpanminus \
+	&& rm -rf /var/lib/apt/lists/*
+
+# Download and compile the bcm2835 C library for GPIO access
+RUN wget http://www.airspayce.com/mikem/bcm2835/bcm2835-1.71.tar.gz && \
+	tar zxvf bcm2835-1.71.tar.gz && \
+	cd bcm2835-1.71 && ./configure && make && make install && \
+	cd .. && rm -rf bcm2835-1.71*
+
+# Install Perl modules via CPAN
+RUN cpanm Device::BCM2835 AnyEvent AnyEvent::Redis
+
+# Copy files into system paths
+COPY perl/LockServer/ /usr/local/share/perl5/LockServer/
+COPY perl/unlock_server.pl /usr/local/bin/unlock_server.pl
+RUN chmod +x /usr/local/bin/unlock_server.pl
+
+CMD ["/usr/local/bin/unlock_server.pl"]

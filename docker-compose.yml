@@ -1,0 +1,99 @@
+services:
+  db:
+    image: mariadb:latest
+    container_name: lock_db
+    hostname: lock-db
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_PASS}
+      MARIADB_DATABASE: ${DB_NAME}
+      MARIADB_USER: ${DB_USER}
+      MARIADB_PASSWORD: ${DB_PASS}
+    volumes:
+      - ./db:/var/lib/mysql
+    networks:
+      - lock_network
+
+  redis:
+    image: redis:alpine
+    container_name: lock_redis
+    hostname: lock-redis
+    restart: always
+    networks:
+      - lock_network
+
+  unlock_server:
+    build:
+      context: .
+      dockerfile: ./unlock_server/Dockerfile
+    container_name: lock_unlock_server
+    hostname: lock-unlock-server
+    restart: always
+    depends_on:
+      - db
+      - redis
+    environment:
+      - REDIS_HOST=lock-redis
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/mem:/dev/mem"
+    privileged: true
+    networks:
+      - lock_network
+
+  rfid_server:
+    build:
+      context: .
+      dockerfile: ./rfid_server/Dockerfile
+    container_name: lock_rfid_server
+    hostname: lock-rfid-server
+    restart: always
+    depends_on:
+      - db
+      - redis
+      - unlock_server
+    environment:
+      - REDIS_HOST=lock-redis
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+    devices:
+      - "/dev/ttyAMA0:/dev/ttyAMA0"
+    networks:
+      - lock_network
+
+  button_server:
+    build:
+      context: .
+      dockerfile: ./button_server/Dockerfile
+    container_name: lock_button_server
+    hostname: lock-button-server
+    restart: always
+    depends_on:
+      - db
+      - redis
+      - unlock_server
+    environment:
+      - REDIS_HOST=lock-redis
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+      - "/dev/mem:/dev/mem"
+    privileged: true
+    networks:
+      - lock_network
+
+networks:
+  lock_network:
+    driver: bridge
