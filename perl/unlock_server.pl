@@ -74,16 +74,16 @@ $redis->subscribe('lock_events', sub {
 	return unless defined $message;
 
 	if ($message =~/^unlock_rfid:(.+)$/) {
-		rpc_handler_unlock_rfid(undef, $1);
+		handler_unlock_rfid(undef, $1);
 	}
 	elsif ($message eq 'unlock_button') {
-		rpc_handler_unlock_button(undef);
+		handler_unlock_button(undef);
 	}
 	elsif ($message =~ /^unlock_web:(.+)$/) {
-		rpc_handler_unlock_web(undef, $1);
+		handler_unlock_web(undef, $1);
 	}
 	elsif ($message =~ /^validate_web:(.+)$/) {
-		rpc_handler_validate_web(undef, $1);
+		handler_validate_web(undef, $1);
 	}
 });
 
@@ -112,7 +112,7 @@ sub log_docker {
 	}
 }
 
-sub rpc_handler_unlock_web {
+sub handler_unlock_web {
 	my $i;
 	my ($res_cv, $user) = @_;
 
@@ -152,7 +152,7 @@ sub rpc_handler_unlock_web {
 #	}
 }
 
-sub rpc_handler_validate_web {
+sub handler_validate_web {
 	my ($res_cv, $user) = @_;
 
 	my $dbh_thr = LockServer::Db->my_connect or warn $!;
@@ -181,7 +181,7 @@ sub rpc_handler_validate_web {
 	}
 }
 
-sub rpc_handler_unlock_rfid {
+sub handler_unlock_rfid {
 	my ($res_cv, $rfid) = @_;
 	my $dbh_thr = LockServer::Db->my_connect or warn $!;
 	if ($dbh_thr) {
@@ -225,7 +225,7 @@ sub rpc_handler_unlock_rfid {
 	}
 }
 
-sub rpc_handler_unlock_button {
+sub handler_unlock_button {
 	my ($res_cv) = @_;
 
 	$res_cv->result(undef) if defined $res_cv;
