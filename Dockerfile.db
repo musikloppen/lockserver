@@ -1,0 +1,35 @@
+FROM arm32v5/debian:buster-slim
+
+# Fix legacy archive endpoints
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+	sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+	sed -i '/debian-updates/d' /etc/apt/sources.list
+
+# Install native ARMv6 MariaDB server
+RUN apt-get update && apt-get install -y mariadb-server && rm -rf /var/lib/apt/lists/*
+
+# Fix directory permissions and structural runtime requirements
+RUN mkdir -p /var/lib/mysql /var/run/mysqld /var/log/mysql && \
+	chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql && \
+	chmod 777 /var/run/mysqld
+
+# Allow MariaDB to receive networking calls from your other containers
+RUN sed -i 's/127.0.0.1/0.0.0.0/g' /etc/mysql/mariadb.conf.d/50-server.cnf
+
+# Create a dedicated, secure initialization script with corrected SQL quotes
+RUN echo '#!/bin/sh\n\
+if [ ! -d "/var/lib/mysql/mysql" ]; then\n\
+  mysql_install_db --user=mysql --datadir=/var/lib/mysql\n\
+  mysqld --user=mysql --datadir=/var/lib/mysql &\n\
+  pid="$!" \n\
+  sleep 5\n\
+  mysql -e "CREATE DATABASE IF NOT EXISTS \`$MARIADB_DATABASE\`;"\n\
+  mysql -e "GRANT ALL PRIVILEGES ON \`$MARIADB_DATABASE\`.* TO \`$MARIADB_USER\`@\`%\` IDENTIFIED BY '\''$MARIADB_PASSWORD'\'';"\n\
+  mysql -e "SET PASSWORD FOR \`root\`@\`localhost\` = PASSWORD('\''$MARIADB_ROOT_PASSWORD'\'');"\n\
+  mysql -e "FLUSH PRIVILEGES;"\n\
+  kill "$pid"\n\
+  sleep 2\n\
+fi\n\
+exec mysqld --user=mysql --datadir=/var/lib/mysql' > /init.sh && chmod +x /init.sh
+
+CMD ["/init.sh"]

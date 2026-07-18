@@ -1,0 +1,15 @@
+FROM arm32v5/debian:buster-slim
+
+# Fix legacy archive endpoints for the old Debian version
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+    sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+    sed -i '/debian-updates/d' /etc/apt/sources.list
+
+# Install native ARMv6 Redis server
+RUN apt-get update && apt-get install -y redis-server && rm -rf /var/lib/apt/lists/*
+
+# Expose Redis port
+EXPOSE 6379
+
+# Run Redis bound to all interfaces and turn off protected mode so containers can talk to it
+CMD ["redis-server", "--protected-mode", "no", "--bind", "0.0.0.0", "--save", ""]
