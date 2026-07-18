@@ -18,7 +18,6 @@ services:
     volumes:
       - ./db:/var/lib/mysql
     healthcheck:
-      # Swapped to standard mysql tool so it pings natively inside your ARMv6 Debian build
       test: ["CMD", "mysql", "-u", "root", "-p${DB_ROOT_PASS}", "-e", "SELECT 1;"]
       interval: 5s
       timeout: 3s
@@ -27,6 +26,10 @@ services:
       lock_network:
         aliases:
           - lock-db
+    logging:
+      driver: "syslog"
+      options:
+        tag: "docker/db"
 
   redis:
     build:
@@ -39,6 +42,10 @@ services:
       lock_network:
         aliases:
           - lock-redis
+    logging:
+      driver: "syslog"
+      options:
+        tag: "docker/redis"
 
   unlock_server:
     build:
@@ -64,6 +71,10 @@ services:
     privileged: true
     networks:
       - lock_network
+    logging:
+      driver: "syslog"
+      options:
+        tag: "docker/unlock_server"
 
   rfid_server:
     build:
@@ -87,6 +98,10 @@ services:
     privileged: true
     networks:
       - lock_network
+    logging:
+      driver: "syslog"
+      options:
+        tag: "docker/rfid_server"
 
   button_server:
     build:
@@ -113,6 +128,10 @@ services:
     privileged: true
     networks:
       - lock_network
+    logging:
+      driver: "syslog"
+      options:
+        tag: "docker/button_server"
 
 networks:
   lock_network:
