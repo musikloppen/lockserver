@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 use Data::Dumper;
-use Sys::Syslog;
 use Redis;
 use DBI;
 use Time::HiRes qw( usleep );
@@ -18,17 +17,19 @@ if (!$DEBUG) {
 	Device::SerialPort->import();
 }
 
-openlog($0, "ndelay,pid", "local0");
-syslog('info', "starting...");
+# Force autoflush on output handlers so logs appear instantly in Docker
+$| = 1;
+
+log_docker('info', "starting...");
 
 # connect to db
 my $dbh;
 if ($dbh = LockServer::Db->my_connect) {
 	$dbh->{'mysql_auto_reconnect'} = 1;
-	syslog('info', "connected to db");
+	log_docker('info', "connected to db");
 }
 else {
-	syslog('info', "cant't connect to db $!");
+	log_docker('err', "cant't connect to db $!");
 	die $!;
 }
 
@@ -54,10 +55,10 @@ if (!$DEBUG) {
 	$port_obj->read_const_time(20);
 	$port_obj->read_char_time(0);
 } else {
-	syslog('info', "[DEBUG MODE] Simulating runtime loop. Publishing dummy tag 'cafebabe12' every 10 seconds.");
+	log_docker('info', "[DEBUG MODE] Simulating runtime loop. Publishing dummy tag 'cafebabe12' every 10 seconds.");
 }
 
-syslog('info', "$0 started");
+log_docker('info', "$0 started");
 while (1) {
 	if (!$DEBUG) {
 		($count_in, $c) = $port_obj->read(1);
@@ -92,9 +93,18 @@ while (1) {
 ## END MAIN
 
 
+sub log_docker {
+	my ($level, $message) = @_;
+	my $timestamp = gmtime();
+	if ($level eq 'err') {
+		print STDERR "[$timestamp] [$level] $message\n";
+	} else {
+		print STDOUT "[$timestamp] [$level] $message\n";
+	}
+}
 
 sub stop_server {
-	syslog('info', "$0 stopped");
+	log_docker('info', "$0 stopped");
 	exit 1;
 }
 
@@ -118,7 +128,7 @@ sub get_defaults {
 	else {
 		$sth_thr->finish;
 		$dbh_thr->disconnect;
-		syslog('info', "$!");
+		log_docker('err', "$!");
 		return undef;
 	}
 }
@@ -143,14 +153,14 @@ sub get_user_defaults {
 		}
 		else {
 			$pref = get_defaults($pref_name);
-			syslog('info', "no user pref $pref_name for $user, using default: $pref");
+			log_docker('info', "no user pref $pref_name for $user, using default: $pref");
 			return $pref;
 		}
 	}
 	else {
 		$sth_thr->finish;
 		$dbh_thr->disconnect;
-		syslog('info', "$!");
+		log_docker('err', "$!");
 		return undef;
 	}
 }
@@ -167,7 +177,7 @@ sub db_log {
 	];
 
 	my $sth_thr = $dbh_thr->prepare($query);
-	$sth_thr->execute($user, $rfid, $message, $source) || syslog('info', "can't log to db");
+	$sth_thr->execute($user, $rfid, $message, $source) || log_docker('err', "can't log to db");
 	
 	$sth_thr->finish;
 	$dbh_thr->disconnect;

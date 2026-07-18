@@ -3,7 +3,6 @@
 use strict;
 use warnings;
 use Data::Dumper;
-use Sys::Syslog;
 use AnyEvent;
 use AnyEvent::Redis;
 use DBI;
@@ -24,17 +23,19 @@ if (!$DEBUG) {
 #use constant MY_SERVER_ROOT => '/var/www/lock_server';
 my $MY_SERVER_ROOT = '/var/www/lock_server';
 
-openlog($0, "ndelay,pid", "local0");
-syslog('info', "starting...");
+# Force autoflush on output handlers so logs appear instantly in Docker
+$| = 1;
+
+log_docker('info', "starting...");
 
 # connect to db
 my $dbh;
 if($dbh = LockServer::Db->my_connect) {
 	$dbh->{'mysql_auto_reconnect'} = 1;
-	syslog('info', "connected to db");
+	log_docker('info', "connected to db");
 }
 else {
-	syslog('info', "cant't connect to db $!");
+	log_docker('err', "cant't connect to db $!");
 	die $!;
 }
 
@@ -52,9 +53,9 @@ if (!$DEBUG) {
 	Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_26,
 	                           &Device::BCM2835::BCM2835_GPIO_FSEL_OUTP);
 } else {
-	syslog('info', "[DEBUG MODE] Skipping physical hardware library initialization");
+	log_docker('info', "[DEBUG MODE] Skipping physical hardware library initialization");
 }
-                                                
+
 ls_lock();
 #syslog('info', "locked...");
 
@@ -86,20 +87,30 @@ $redis->subscribe('lock_events', sub {
 	}
 });
 
-syslog('info', "Redis event listener initialized on channel: lock_events");
-syslog('info', "$0 started");
+log_docker('info', "Redis event listener initialized on channel: lock_events");
+log_docker('info', "$0 started");
 
 # runs forever...
 my $s = AnyEvent->signal(signal => 'INT', cb => \&stop_server);
 AnyEvent->condvar->recv;
 
-syslog('info', "all threads stopped...");
-syslog('info', "$0 stopped");
+log_docker('info', "all threads stopped...");
+log_docker('info', "$0 stopped");
 ls_lock();
 #syslog('info', "locked...");
 exit 1;
 
 ## END MAIN
+
+sub log_docker {
+	my ($level, $message) = @_;
+	my $timestamp = gmtime();
+	if ($level eq 'err') {
+		print STDERR "[$timestamp] [$level] $message\n";
+	} else {
+		print STDOUT "[$timestamp] [$level] $message\n";
+	}
+}
 
 sub rpc_handler_unlock_web {
 	my $i;
@@ -133,7 +144,7 @@ sub rpc_handler_unlock_web {
 #		else {
 #			$res_cv->result(undef) if defined $res_cv;
 #			db_log($user, undef, 'unauthorized', 'web');
-#			syslog('info', "user $user not authorized");
+#			log_docker('info', "user $user not authorized");
 
 ##			brute force resitance
 ##			usleep(1000_000);
@@ -160,7 +171,7 @@ sub rpc_handler_validate_web {
 		$dbh_thr->disconnect;
 
 #		db_log($user, undef, 'validate', 'web');
-#		syslog('info', "user $user validate");
+#		log_docker('info', "user $user validate");
 		if ($active) {
 			$res_cv->result(1) if defined $res_cv;
 		}
@@ -206,7 +217,7 @@ sub rpc_handler_unlock_rfid {
 		else {
 			$res_cv->result(undef) if defined $res_cv;
 			db_log(undef, $rfid, 'unauthorized', 'rfid');
-			syslog('info', "rfid $rfid not authorized");
+			log_docker('info', "rfid $rfid not authorized");
 
 			#brute force resitance
 			usleep(1000_000);
@@ -234,7 +245,7 @@ sub rpc_handler_unlock_button {
 }
 
 sub stop_server {
-	syslog('info', "$0 stopped");
+	log_docker('info', "$0 stopped");
 	exit 1; 
 }
 
@@ -269,7 +280,7 @@ sub get_defaults {
 	else {
 		$sth_thr->finish;
 		$dbh_thr->disconnect;
-		syslog('info', "$!");
+		log_docker('err', "$!");
 		return undef;
 	}
 }
@@ -292,14 +303,14 @@ sub get_user_defaults {
 		}
 		else {
 			$pref = get_defaults($pref_name);
-			syslog('info', "no user pref $pref_name for $user, using default: $pref");
+			log_docker('info', "no user pref $pref_name for $user, using default: $pref");
 			return $pref;
 		}
 	}
 	else {
 		$sth_thr->finish;
 		$dbh_thr->disconnect;
-		syslog('info', "$!");
+		log_docker('err', "$!");
 		return undef;
 	}
 }
@@ -314,7 +325,7 @@ sub db_log {
 			(?, ?, ?, ?, NOW())
 	];
 	my $sth_thr = $dbh_thr->prepare($query);
-	$sth_thr->execute($user, $rfid, $message, $source) || syslog('info', "can't log to db");
+	$sth_thr->execute($user, $rfid, $message, $source) || log_docker('err', "can't log to db");
 	$sth_thr->finish;
 	$dbh_thr->disconnect;
 }
@@ -328,7 +339,7 @@ sub unlock_rfid {
 #		$thr_buzzer = threads->create('buzzer', $user);
 #	}
 	db_log($user, $rfid, 'unlock', 'rfid');
-	syslog('info', "user $user unlocked with rfid: $rfid");
+	log_docker('info', "user $user unlocked with rfid: $rfid");
 	usleep(get_user_defaults($user, 'open_time') * 1000_000);
 
 	ls_lock();
@@ -337,7 +348,7 @@ sub unlock_rfid {
 #		$thr_buzzer->detach;
 #	}
 	db_log($user, $rfid, 'lock', 'rfid');
-	syslog('info', "locked...");
+	log_docker('info', "locked...");
 }
 
 sub unlock_web {
@@ -345,12 +356,12 @@ sub unlock_web {
 
 	ls_unlock();
 	db_log($user, undef, 'unlock', 'web');
-	syslog('info', "user $user unlocked");
+	log_docker('info', "user $user unlocked");
 	usleep(get_user_defaults($user, 'open_time') * 1000_000);
 
 	ls_lock();
 	db_log($user, undef, 'lock', 'web');
-	syslog('info', "locked...");
+	log_docker('info', "locked...");
 }
 
 sub unlock_button {
@@ -360,7 +371,7 @@ sub unlock_button {
 #		$thr_buzzer = threads->create('buzzer', $user);
 #	}
 	db_log('', undef, 'unlock', 'button');
-	syslog('info', "button unlocked");
+	log_docker('info', "button unlocked");
 	usleep(get_defaults('open_time') * 1000_000);
 
 	ls_lock();
@@ -369,7 +380,7 @@ sub unlock_button {
 #		$thr_buzzer->detach;
 #	}
 	db_log('', undef, 'lock', 'button');
-	syslog('info', "locked...");
+	log_docker('info', "locked...");
 }
 
 sub ls_unlock {
@@ -378,7 +389,7 @@ sub ls_unlock {
 		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_26, 1);
 		`echo 0 >/sys/class/leds/ath9k_htc-phy0/brightness ; echo 1 >/sys/class/leds/ath9k_htc-phy0/brightness`;
 	} else {
-		syslog('info', "[DEBUG MODE] Executing virtual action: RELAY UNLOCKED");
+		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY UNLOCKED");
 	}
 }
 
@@ -388,6 +399,6 @@ sub ls_lock {
 		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_26, 0);
 		`echo "phy0tpt"> /sys/class/leds/ath9k_htc-phy0/trigger`;
 	} else {
-		syslog('info', "[DEBUG MODE] Executing virtual action: RELAY LOCKED");
+		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY LOCKED");
 	}
 }
