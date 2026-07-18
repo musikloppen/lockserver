@@ -1,4 +1,9 @@
-FROM balenalib/raspberry-pi-debian:bookworm
+FROM arm32v5/debian:buster-slim
+
+# Fix the dead upstream Debian Buster archive mirrors inside the container
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+	sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+	sed -i '/debian-updates/d' /etc/apt/sources.list
 
 # Install system dependencies and build tools
 RUN apt-get update && apt-get install -y \

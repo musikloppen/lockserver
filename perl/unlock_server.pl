@@ -59,7 +59,6 @@ ls_lock();
 #syslog('info', "locked...");
 
 # start servers...
-my $port_name = '/dev/ttyAMA0';
 
 # Initialize Redis client connection instead of legacy AnyEvent JSONRPC TCP Server
 my $redis_host = $ENV{REDIS_HOST} || 'lock-redis';

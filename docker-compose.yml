@@ -80,8 +80,7 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
-    devices:
-      - "/dev/ttyAMA0:/dev/ttyAMA0"
+    privileged: true
     networks:
       - lock_network
 
