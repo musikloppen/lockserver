@@ -1,6 +1,8 @@
+version: '3.3'
+
 services:
   db:
-    image: mariadb:latest
+    image: tobi312/rpi-mariadb:10.6-alpine
     container_name: lock_db
     hostname: lock-db
     restart: always
@@ -14,11 +16,10 @@ services:
     volumes:
       - ./db:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASS}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASS}"]
       interval: 3s
       timeout: 3s
       retries: 10
-      start_period: 5s
     networks:
       - lock_network
 
@@ -33,15 +34,14 @@ services:
   unlock_server:
     build:
       context: .
-      dockerfile: ./unlock_server/Dockerfile
+      dockerfile: ./Dockerfile.unlock_server
     container_name: lock_unlock_server
     hostname: lock-unlock-server
     restart: always
+    # Flattened format to allow compatibility with the Pi's native compose engine
     depends_on:
-      redis:
-        condition: service_started
-      db:
-        condition: service_healthy
+      - redis
+      - db
     environment:
       - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
@@ -51,7 +51,6 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
     devices:
-      # Only request devices on Linux when not debugging
       - "/dev/gpiomem:/dev/gpiomem"
       - "/dev/mem:/dev/mem"
     privileged: true
@@ -61,17 +60,15 @@ services:
   rfid_server:
     build:
       context: .
-      dockerfile: ./rfid_server/Dockerfile
+      dockerfile: ./Dockerfile.rfid_server
     container_name: lock_rfid_server
     hostname: lock-rfid-server
     restart: always
+    # Flattened format to allow compatibility with the Pi's native compose engine
     depends_on:
-      redis:
-        condition: service_started
-      unlock_server:
-        condition: service_started
-      db:
-        condition: service_healthy
+      - redis
+      - unlock_server
+      - db
     environment:
       - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
@@ -87,17 +84,15 @@ services:
   button_server:
     build:
       context: .
-      dockerfile: ./button_server/Dockerfile
+      dockerfile: ./Dockerfile.button_server
     container_name: lock_button_server
     hostname: lock-button-server
     restart: always
+    # Flattened format to allow compatibility with the Pi's native compose engine
     depends_on:
-      redis:
-        condition: service_started
-      unlock_server:
-        condition: service_started
-      db:
-        condition: service_healthy
+      - redis
+      - unlock_server
+      - db
     environment:
       - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
