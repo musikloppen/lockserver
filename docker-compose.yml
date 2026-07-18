@@ -2,7 +2,9 @@ version: '3.3'
 
 services:
   db:
-    image: tobi312/rpi-mariadb:10.6-alpine
+    build:
+      context: .
+      dockerfile: ./Dockerfile.db
     container_name: lock_db
     hostname: lock-db
     restart: always
@@ -16,20 +18,27 @@ services:
     volumes:
       - ./db:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASS}"]
-      interval: 3s
+      # Swapped to standard mysql tool so it pings natively inside your ARMv6 Debian build
+      test: ["CMD", "mysql", "-u", "root", "-p${DB_ROOT_PASS}", "-e", "SELECT 1;"]
+      interval: 5s
       timeout: 3s
       retries: 10
     networks:
-      - lock_network
+      lock_network:
+        aliases:
+          - lock-db
 
   redis:
-    image: redis:alpine
+    build:
+      context: .
+      dockerfile: ./Dockerfile.redis
     container_name: lock_redis
     hostname: lock-redis
     restart: always
     networks:
-      - lock_network
+      lock_network:
+        aliases:
+          - lock-redis
 
   unlock_server:
     build:
@@ -38,7 +47,6 @@ services:
     container_name: lock_unlock_server
     hostname: lock-unlock-server
     restart: always
-    # Flattened format to allow compatibility with the Pi's native compose engine
     depends_on:
       - redis
       - db
@@ -64,7 +72,6 @@ services:
     container_name: lock_rfid_server
     hostname: lock-rfid-server
     restart: always
-    # Flattened format to allow compatibility with the Pi's native compose engine
     depends_on:
       - redis
       - unlock_server
@@ -88,7 +95,6 @@ services:
     container_name: lock_button_server
     hostname: lock-button-server
     restart: always
-    # Flattened format to allow compatibility with the Pi's native compose engine
     depends_on:
       - redis
       - unlock_server
