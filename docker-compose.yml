@@ -9,7 +9,7 @@ services:
     hostname: lock-db
     restart: always
     ports:
-      - "3307:3306"
+      - "3306:3306"
     environment:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASS}
       MARIADB_DATABASE: ${DB_NAME}
