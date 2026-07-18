@@ -79,9 +79,9 @@ sub log_docker {
 	my ($level, $message) = @_;
 	my $timestamp = gmtime();
 	if ($level eq 'err') {
-		print STDERR "[$timestamp] [$level] $message\n";
+		print STDERR "[$level] $message\n";
 	} else {
-		print STDOUT "[$timestamp] [$level] $message\n";
+		print STDOUT "[$level] $message\n";
 	}
 }
 
