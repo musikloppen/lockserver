@@ -5,6 +5,7 @@ use warnings;
 use Data::Dumper;
 use Redis;
 use DBI;
+use IO::Select;
 use Time::HiRes qw( usleep );
 
 use lib qw( /usr/local/share/perl5 );
@@ -43,7 +44,7 @@ my $redis_host = $ENV{REDIS_HOST} || 'lock-redis';
 my $redis = Redis->new(server => "$redis_host:6379");
 
 # Configure serial hardware boundaries
-my ($port_obj, $count_in, $c);
+my ($port_obj, $count_in, $c, $select);
 my $rfid = '';
 
 if (!$DEBUG) {
@@ -52,8 +53,14 @@ if (!$DEBUG) {
 	$port_obj->databits(8);
 	$port_obj->stopbits(1);
 	$port_obj->parity("none");
-	$port_obj->read_const_time(20);
+	
+	# Adjust read times to play nicely with select()
+	$port_obj->read_const_time(0);
 	$port_obj->read_char_time(0);
+
+	# Create the IO::Select object and add the serial port file descriptor
+	$select = IO::Select->new();
+	$select->add($port_obj->FILENO) || die "Failed to add serial port to IO::Select: $!\n";
 } else {
 	log_docker('info', "[DEBUG MODE] Simulating runtime loop. Publishing dummy tag 'cafebabe12' every 10 seconds.");
 }
@@ -61,26 +68,29 @@ if (!$DEBUG) {
 log_docker('info', "$0 started");
 while (1) {
 	if (!$DEBUG) {
-		($count_in, $c) = $port_obj->read(1);
-		next unless ($count_in);
-		
-		unless (ord($c) == 13) {
-			$rfid .= $c;
-		}
-		else {
-			# Process completed hardware sequence
-			$rfid =~ s/.*([\dabcdef]{10}).*/$1/i;
+		# Block up to 1 second waiting for data to arrive on the serial port
+		if ($select->can_read(1)) {
+			($count_in, $c) = $port_obj->read(1);
+			next unless ($count_in);
+			
+			unless (ord($c) == 13) {
+				$rfid .= $c;
+			}
+			else {
+				# Process completed hardware sequence
+				$rfid =~ s/.*([\dabcdef]{10}).*/$1/i;
 
-			# Stream the action message payload over Redis Bus
-			$redis->publish('lock_events', "unlock_rfid:$rfid");
-			usleep(get_defaults('open_time') * 1000_000);
+				# Stream the action message payload over Redis Bus
+				$redis->publish('lock_events', "unlock_rfid:$rfid");
+				usleep(get_defaults('open_time') * 1000_000);
 
-			# Flush inputs accumulated during active operation
-			$port_obj->lookclear;
-			do {
-				($count_in, $c) = $port_obj->read(1);
-			} while ($count_in);
-			$rfid = '';
+				# Flush inputs accumulated during active operation
+				$port_obj->lookclear;
+				do {
+					($count_in, $c) = $port_obj->read(1);
+				} while ($count_in);
+				$rfid = '';
+			}
 		}
 	} else {
 		# Mocking loop interval for testing environments
