@@ -8,7 +8,8 @@ RUN echo "deb [check-valid-until=no] http://archive.debian.org/debian/ buster ma
 
 # Install system utilities, build tools, Apache2, and mod_perl core libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
-build-essential \
+	build-essential \
+	cpanminus \
 	libssl-dev \
 	apache2 \
 	apache2-bin \
@@ -30,6 +31,9 @@ build-essential \
 	libemail-simple-perl \
 	libnumber-phone-perl \
 	&& rm -rf /var/lib/apt/lists/*
+
+# Install Data::RandomPerson via CPAN
+RUN cpanm --notest File::ShareDir::Install Data::RandomPerson
 
 # Enable standard required Apache module parameters
 RUN a2enmod expires remoteip headers proxy proxy_http rewrite

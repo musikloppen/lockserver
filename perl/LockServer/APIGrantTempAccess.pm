@@ -10,7 +10,6 @@ use Apache2::Const -compile => qw(OK HTTP_BAD_REQUEST HTTP_UNAUTHORIZED HTTP_INT
 use CGI::Cookie ();
 use CGI ();
 use JSON qw(decode_json encode_json);
-use Redis;
 
 # SMS Dependencies
 use Net::SMTP;
@@ -27,7 +26,7 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'POST request required' });
 	}
 
-	# Extract session cookie
+	# 1. Extract session cookie
 	my $cookie_header = $r->headers_in->{Cookie} || '';
 	my %cookies = CGI::Cookie->parse($cookie_header);
 	my $cookie_token = $cookies{'auth_token'} ? scalar $cookies{'auth_token'}->value : undef;
@@ -38,10 +37,11 @@ sub handler {
 
 	my $dbh = LockServer::Db->my_connect();
 	unless ($dbh) {
+		$r->log_error("[APIGrantTempAccess] DB Connection Failed");
 		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Database error' });
 	}
 
-	# Verify requesting user is active
+	# 2. Look up the verified user who made this request
 	my $quoted_token = $dbh->quote($cookie_token);
 	my $sth = $dbh->prepare(qq[
 		SELECT u.username
@@ -50,6 +50,8 @@ sub handler {
 		WHERE a.cookie_token = $quoted_token
 			AND a.auth_state = 'sms_code_verified'
 			AND u.active = 1
+			AND (u.active_from IS NULL OR u.active_from < NOW())
+			AND (u.expire_at IS NULL OR NOW() < u.expire_at)
 		LIMIT 1
 	]);
 	$sth->execute();
@@ -62,7 +64,7 @@ sub handler {
 
 	my $created_by = $row->{username};
 
-	# Read POST body via CGI slurped raw data with stream fallback
+	# 3. Read POST payload
 	my $post_data = '';
 	my $cgi = CGI->new($r);
 	$post_data = $cgi->param('POSTDATA') || '';
@@ -74,10 +76,10 @@ sub handler {
 		}
 	}
 
+	use Data::Dumper; warn Dumper $post_data;
 	my $req_data = {};
 	eval { $req_data = decode_json($post_data); };
 
-	# Fallback: Check if form parameters were submitted directly
 	if ($@ || !$req_data->{phone}) {
 		$req_data->{phone}          ||= $cgi->param('phone');
 		$req_data->{duration_hours} ||= $cgi->param('duration_hours');
@@ -88,7 +90,7 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Invalid payload. "phone" and "duration_hours" required.' });
 	}
 
-	# Normalize phone number
+	# 4. Normalize phone number
 	my $phone = $req_data->{phone};
 	$phone =~ s/[\s\-]//g;
 	$phone = '+45' . $phone unless $phone =~ /^\+/;
@@ -98,38 +100,73 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Duration must be between 1 and 168 hours' });
 	}
 
-	# Insert or Update guest user in 'users' table
-	my $guest_name = $req_data->{name} || 'Guest';
-	my $sth_chk = $dbh->prepare("SELECT id FROM users WHERE phone = ? LIMIT 1");
-	$sth_chk->execute($phone);
-	my ($existing_id) = $sth_chk->fetchrow;
-	$sth_chk->finish();
+	# 5. Generate human-readable username & write to MySQL
+	my $unique_username = generate_guest_username();
+	my $guest_name      = $req_data->{name} || $unique_username;
+	my $comment         = "Guest access created by $created_by";
 
-	if ($existing_id) {
-		$dbh->do("UPDATE users SET active=1, active_from=NOW(), expire_at=DATE_ADD(NOW(), INTERVAL ? HOUR), comment=?, created_by=? WHERE id=?", 
-			undef, $hours, "Guest updated by $created_by", $created_by, $existing_id);
-	} else {
-		$dbh->do("INSERT INTO users (username, name, phone, `group`, active, active_from, expire_at, comment, created_by) VALUES (?, ?, ?, 'guest', 1, NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), ?, ?)",
-			undef, 'guest_' . time(), $guest_name, $phone, "Guest created by $created_by", $created_by);
+	$dbh->{AutoCommit} = 1;
+
+	my $sth_ins = $dbh->prepare(qq[
+		INSERT INTO users (
+			`username`, `name`, `phone`, `group`, `active`,
+			`active_from`, `expire_at`, `comment`, `created_by`
+		) VALUES (
+			?, ?, ?, 'guest', 1,
+			NOW(), DATE_ADD(NOW(), INTERVAL ? HOUR), ?, ?
+		)
+	]);
+
+	my $insert_ok = $sth_ins->execute($unique_username, $guest_name, $phone, $hours, $comment, $created_by);
+	$sth_ins->finish();
+
+	unless ($insert_ok) {
+		$r->log_error("[APIGrantTempAccess] INSERT failed: " . ($dbh->errstr || 'unknown error'));
+		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Failed to write to database' });
 	}
 
-	# SMS Notification
+	# 6. Send SMS Notification
 	my $base_url = "https://" . ($r->hostname || 'localhost');
 	my $sms_text = "You have been granted door access for $hours hour(s) by $created_by. Log in here: $base_url";
 
-	send_notification($r, $phone, $sms_text);
+	my $sms_ok = send_notification($r, $phone, $sms_text);
 
 	return send_json($r, 200, {
 		status     => 'ok',
-		message    => 'Guest access created and SMS dispatched',
+		message    => $sms_ok ? 'Guest access created and SMS dispatched' : 'Guest access created (SMS delivery failed)',
+		username   => $unique_username,
 		phone      => $phone,
-		expires_in => "$hours hour(s)"
+		expires_in => "$hours hour(s)",
+		sms_sent   => $sms_ok ? 1 : 0
 	});
 }
 
-# -------------------------------------------------------------------------
-# Helper: Send SMS via SMTP
-# -------------------------------------------------------------------------
+sub generate_guest_username {
+	my $username = undef;
+
+	eval {
+		require Data::RandomPerson;
+		my $rperson = Data::RandomPerson->new();
+		my $person  = $rperson->create();
+
+		if ($person && $person->{firstname} && $person->{lastname}) {
+			my $first = lc($person->{firstname});
+			my $last  = lc($person->{lastname});
+			$first =~ s/[^a-z0-9]//g;
+			$last  =~ s/[^a-z0-9]//g;
+			$username = "guest-$first-$last";
+		}
+	};
+
+	unless ($username) {
+		my @adj  = qw(swift happy bright brave calm clever eager gentle kind nimble solar cosmic);
+		my @anim = qw(panda falcon otter lynx dolphin fox koala badger raven heron wolf tiger);
+		$username = "guest-" . $adj[int rand @adj] . "-" . $anim[int rand @anim] . "-" . int(rand(100));
+	}
+
+	return $username;
+}
+
 sub send_notification {
 	my ($r, $sms_number, $message) = @_;
 	
@@ -157,7 +194,10 @@ sub send_notification {
 		my $smtp_port = ($r ? $r->subprocess_env('SMTP_PORT') : undef) || $ENV{SMTP_PORT} || 25;
 
 		my $smtp = Net::SMTP->new($smtp_host, Port => $smtp_port, Timeout => 10);
-		return unless $smtp;
+		unless ($smtp) {
+			$r->log_error("[APIGrantTempAccess] SMTP connection failed to $smtp_host:$smtp_port");
+			return 0;
+		}
 
 		$smtp->mail('meterlogger@meterlogger');
 		$smtp->to("$sms_number\@meterlogger");
@@ -165,12 +205,17 @@ sub send_notification {
 		$smtp->datasend($email->as_string);
 		$smtp->dataend();
 		$smtp->quit();
+		return 1;
 	};
+
+	if ($@) {
+		$r->log_error("[APIGrantTempAccess] SMS notification exception: $@");
+		return 0;
+	}
+
+	return 1;
 }
 
-# -------------------------------------------------------------------------
-# Helper: Send JSON & set status code explicitly for mod_perl
-# -------------------------------------------------------------------------
 sub send_json {
 	my ($r, $status_code, $data) = @_;
 
