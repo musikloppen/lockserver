@@ -6,15 +6,11 @@ use utf8;
 
 use Apache2::RequestRec ();
 use Apache2::RequestIO ();
+use Apache2::Log ();
 use Apache2::Const -compile => qw(OK HTTP_BAD_REQUEST HTTP_UNAUTHORIZED HTTP_INTERNAL_SERVER_ERROR);
 use CGI::Cookie ();
 use CGI ();
 use JSON qw(decode_json encode_json);
-
-# SMS Dependencies
-use Net::SMTP;
-use Email::MIME;
-use Encode qw(decode is_utf8);
 
 use LockServer::Db;
 use LockServer::Utils qw(send_notification generate_guest_username log_info log_warn log_die);
@@ -80,7 +76,8 @@ sub handler {
 	my $req_data = {};
 	eval { $req_data = decode_json($post_data); };
 
-	if ($@ || !$req_data->{phone}) {
+	if ($@ || !ref $req_data || !$req_data->{phone}) {
+		$req_data ||= {};
 		$req_data->{phone}          ||= $cgi->param('phone');
 		$req_data->{duration_hours} ||= $cgi->param('duration_hours');
 		$req_data->{name}           ||= $cgi->param('name');
@@ -141,6 +138,9 @@ sub handler {
 	});
 }
 
+# -------------------------------------------------------------------------
+# Helper: Send JSON and set HTTP status line explicitly for mod_perl
+# -------------------------------------------------------------------------
 sub send_json {
 	my ($r, $status_code, $data) = @_;
 
@@ -151,8 +151,22 @@ sub send_json {
 		$r->status($status_code);
 	}
 
+	# Ensure $data is always a Hash or Array reference to prevent encode_json crashes
+	my $payload;
+	if (ref $data eq 'HASH') {
+		$payload = { %$data };
+	} elsif (ref $data eq 'ARRAY') {
+		$payload = [ @$data ];
+	} else {
+		if ($status_code >= 400) {
+			$payload = { error => defined $data ? "$data" : 'An error occurred' };
+		} else {
+			$payload = { message => defined $data ? "$data" : 'OK' };
+		}
+	}
+
 	$r->content_type('application/json; charset=UTF-8');
-	$r->print(encode_json($data));
+	$r->print(encode_json($payload));
 
 	return Apache2::Const::OK;
 }

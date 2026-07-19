@@ -59,7 +59,8 @@ sub send_notification {
 	eval {
 		# Extract SMTP settings safely from request env or system %ENV
 		my $smtp_host = ($r ? $r->subprocess_env('SMTP_HOST') : undef) || $ENV{SMTP_HOST} || 'postfix';
-		my $smtp_port = ($r ? $r->subprocess_env('SMTP_PORT') : undef) || $ENV{SMTP_PORT} || 25;
+		my $smtp_port = ($r ? $r->subprocess_env('SMTP_PORT') : undef) || $ENV{SMTP_PORT} || 587;
+		use Data::Dumper; warn Dumper ($smtp_host, $smtp_port);
 
 		unless ($smtp_host) {
 			log_warn("Mandatory environment variable missing: SMTP_HOST", { -request => $r });
