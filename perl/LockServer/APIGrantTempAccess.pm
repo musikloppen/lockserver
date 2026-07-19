@@ -15,9 +15,10 @@ use JSON qw(decode_json encode_json);
 use Net::SMTP;
 use Email::MIME;
 use Encode qw(decode is_utf8);
-use LockServer::Number::Phone;
 
 use LockServer::Db;
+use LockServer::Utils qw(send_notification generate_guest_username log_info log_warn log_die);
+use LockServer::Number::Phone;
 
 sub handler {
 	my $r = shift;
@@ -76,7 +77,6 @@ sub handler {
 		}
 	}
 
-	use Data::Dumper; warn Dumper $post_data;
 	my $req_data = {};
 	eval { $req_data = decode_json($post_data); };
 
@@ -139,81 +139,6 @@ sub handler {
 		expires_in => "$hours hour(s)",
 		sms_sent   => $sms_ok ? 1 : 0
 	});
-}
-
-sub generate_guest_username {
-	my $username = undef;
-
-	eval {
-		require Data::RandomPerson;
-		my $rperson = Data::RandomPerson->new();
-		my $person  = $rperson->create();
-
-		if ($person && $person->{firstname} && $person->{lastname}) {
-			my $first = lc($person->{firstname});
-			my $last  = lc($person->{lastname});
-			$first =~ s/[^a-z0-9]//g;
-			$last  =~ s/[^a-z0-9]//g;
-			$username = "guest-$first-$last";
-		}
-	};
-
-	unless ($username) {
-		my @adj  = qw(swift happy bright brave calm clever eager gentle kind nimble solar cosmic);
-		my @anim = qw(panda falcon otter lynx dolphin fox koala badger raven heron wolf tiger);
-		$username = "guest-" . $adj[int rand @adj] . "-" . $anim[int rand @anim] . "-" . int(rand(100));
-	}
-
-	return $username;
-}
-
-sub send_notification {
-	my ($r, $sms_number, $message) = @_;
-	
-	eval {
-		unless (is_utf8($message)) { $message = decode('UTF-8', $message); }
-
-		my $phone_obj = LockServer::Number::Phone->new($sms_number);
-		if ($phone_obj && $phone_obj->is_valid) {
-			my $compact = $phone_obj->international;
-			$compact =~ s/^\+//;
-			$sms_number = $compact;
-		}
-
-		my $email = Email::MIME->create(
-			header_str => [
-				From    => 'meterlogger@meterlogger',
-				To      => $sms_number . '@meterlogger',
-				Subject => $message,
-			],
-			attributes => { encoding => 'quoted-printable', charset => 'UTF-8', content_type => 'text/plain' },
-			body => '',
-		);
-
-		my $smtp_host = ($r ? $r->subprocess_env('SMTP_HOST') : undef) || $ENV{SMTP_HOST} || '10.8.0.66';
-		my $smtp_port = ($r ? $r->subprocess_env('SMTP_PORT') : undef) || $ENV{SMTP_PORT} || 25;
-
-		my $smtp = Net::SMTP->new($smtp_host, Port => $smtp_port, Timeout => 10);
-		unless ($smtp) {
-			$r->log_error("[APIGrantTempAccess] SMTP connection failed to $smtp_host:$smtp_port");
-			return 0;
-		}
-
-		$smtp->mail('meterlogger@meterlogger');
-		$smtp->to("$sms_number\@meterlogger");
-		$smtp->data();
-		$smtp->datasend($email->as_string);
-		$smtp->dataend();
-		$smtp->quit();
-		return 1;
-	};
-
-	if ($@) {
-		$r->log_error("[APIGrantTempAccess] SMS notification exception: $@");
-		return 0;
-	}
-
-	return 1;
 }
 
 sub send_json {

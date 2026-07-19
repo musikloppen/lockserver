@@ -176,6 +176,8 @@ services:
       - db
     volumes:
       - ./db/conf.d/99-client.cnf:/etc/mysql/my.cnf:ro
+    extra_hosts:
+      - "postfix:10.8.0.66"
     environment:
       - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
