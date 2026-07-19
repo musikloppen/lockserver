@@ -57,7 +57,7 @@ sub handler {
 
 	my $username = $row->{username};
 
-	# Publish unlock event to Redis (unlock_server.pl will log 'unlock' and 'lock' events)
+	# Publish unlock event to Redis
 	my $redis_host = $r->subprocess_env('REDIS_HOST') || $ENV{REDIS_HOST} || 'lock-redis';
 	
 	eval {
@@ -73,16 +73,23 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Failed to dispatch unlock event' });
 	}
 
-	return send_json($r, Apache2::Const::OK, { status => 'ok', message => 'Door unlocked', user => $username });
+	return send_json($r, 200, { status => 'ok', message => 'Door unlocked', user => $username });
 }
 
 # -------------------------------------------------------------------------
-# Helper: Send JSON response cleanly in mod_perl
+# Helper: Send JSON and force HTTP status line in mod_perl
 # -------------------------------------------------------------------------
 sub send_json {
-	my ($r, $status, $data) = @_;
+	my ($r, $status_code, $data) = @_;
 
-	$r->status($status);
+	# Force Apache status line and status code explicitly
+	if ($status_code == 200) {
+		$r->status_line("200 OK");
+		$r->status(200);
+	} else {
+		$r->status($status_code);
+	}
+
 	$r->content_type('application/json; charset=UTF-8');
 	$r->print(encode_json($data));
 
