@@ -24,5 +24,6 @@ use Math::Random::Secure ();
 use LockServer::Db;
 use LockServer::SMSAuth;
 use LockServer::APIUnlock;
+use LockServer::APIGrantTempAccess;
 
 1;
