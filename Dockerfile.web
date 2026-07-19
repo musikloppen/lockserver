@@ -1,0 +1,51 @@
+FROM arm32v5/debian:buster-slim
+
+LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
+
+# Point the EOL package manager mirrors to the official historical archive index strings
+RUN echo "deb [check-valid-until=no] http://archive.debian.org/debian/ buster main contrib non-free" > /etc/apt/sources.list && \
+	echo "deb [check-valid-until=no] http://archive.debian.org/debian-security buster/updates main contrib non-free" >> /etc/apt/sources.list
+
+# Install system utilities, build tools, Apache2, and mod_perl core libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+build-essential \
+	libssl-dev \
+	apache2 \
+	apache2-bin \
+	apache2-utils \
+	libapache2-mod-perl2 \
+	libapache2-mod-perl2-dev \
+	libapache2-reload-perl \
+	libembperl-perl \
+	libdbd-mysql-perl \
+	libdbi-perl \
+	libfile-slurp-perl \
+	libjson-xs-perl \
+	libjson-perl \
+	liblwp-protocol-https-perl \
+	libmath-random-secure-perl \
+	libcgi-pm-perl \
+	libredis-perl \
+	libemail-mime-perl \
+	libemail-simple-perl \
+	libnumber-phone-perl \
+	&& rm -rf /var/lib/apt/lists/*
+
+# Enable standard required Apache module parameters
+RUN a2enmod expires remoteip headers proxy proxy_http rewrite
+
+# Establish internal application runtime paths
+WORKDIR /var/www/lock_server
+COPY ./htdocs /var/www/lock_server
+COPY ./000-default.conf /etc/apache2/sites-available/
+COPY ./perl /etc/apache2/perl
+
+# Pipe internal access and warning tracking files to stdout/stderr stream handles
+RUN ln -sf /dev/stdout /var/log/apache2/access.log \
+	&& ln -sf /dev/stderr /var/log/apache2/error.log
+
+# Enforce Perl library lookup locations globally
+ENV PERL5LIB=/etc/apache2/perl:/usr/local/share/perl5
+
+# Inline entrypoint script: sources variables and handles clean SIGTERM propagation
+ENTRYPOINT ["/bin/sh", "-c", ". /etc/apache2/envvars && exec apache2 -D FOREGROUND"]

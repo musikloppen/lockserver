@@ -1,5 +1,7 @@
 FROM arm32v5/debian:buster-slim
 
+LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
+
 # Fix the dead upstream Debian Buster archive mirrors inside the container
 RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
 	sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
