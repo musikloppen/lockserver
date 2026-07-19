@@ -1,6 +1,9 @@
 package LockServer::SMSAuth;
 
 use strict;
+use warnings;
+use utf8;
+
 use Apache2::RequestRec ();
 use Apache2::RequestIO ();
 use Apache2::SubRequest ();
@@ -9,38 +12,37 @@ use CGI::Cookie ();
 use CGI;
 use Math::Random::Secure qw(rand);
 use DBI;
-use utf8;
-
+use POSIX qw(floor round);
+use File::Basename;
 use Net::SMTP;
+use Email::MIME;
+use Encode qw(encode decode is_utf8);
 
 use LockServer::Db;
-use LockServer::Utils;
 use LockServer::Number::Phone;
 
-# Main Apache request handler
+# -------------------------------------------------------------------------
+# Internal Logging Setup
+# -------------------------------------------------------------------------
+$| = 1;  # Autoflush STDOUT
+
+binmode(STDOUT, ":encoding(UTF-8)");
+binmode(STDERR, ":encoding(UTF-8)");
+
+my $script_name = basename($0, ".pl");
+
+# -------------------------------------------------------------------------
+# Main Apache Request Handler
+# -------------------------------------------------------------------------
 sub handler {
 	my $r = shift;
 
 	my $logout_path     = $r->dir_config('LogoutPath') || 'logout';
 	my $logged_out_path = $r->dir_config('LoggedOutPath') || '/logged_out.html';
 	my $public_access   = $r->dir_config('PublicAccess') || '';
-	my $snooze_page      = $r->dir_config('SnoozePagePath') || '';
-	my $snooze_api      = $r->dir_config('SnoozeAPIPath')  || '';
 
 	# Use original request URI to avoid internal_redirect side effects
 	my $orig_uri = $r->unparsed_uri || $r->uri;
-
-	# Check single user-facing page path
-	if ($snooze_page && $orig_uri =~ m/^$snooze_page/) {
-		$r->warn("Request URI '$orig_uri' matched SnoozePagePath '$snooze_page'; SMSAuth allowed for page path.");
-		return Apache2::Const::OK;
-	}
-
-	# Check single API path
-	if ($snooze_api && $orig_uri =~ m/^$snooze_api/) {
-		$r->warn("Request URI '$orig_uri' matched SnoozeAPIPath '$snooze_page'; SMSAuth allowed for page path.");
-		return Apache2::Const::OK;
-	}
 
 	# Check PublicAccess paths
 	if ($public_access) {
@@ -76,7 +78,9 @@ sub handler {
 	return Apache2::Const::HTTP_SERVICE_UNAVAILABLE;
 }
 
-# Handles login state machine: new -> login -> sms_code_sent -> sms_code_verified
+# -------------------------------------------------------------------------
+# Login Handler State Machine: new -> login -> sms_code_sent -> sms_code_verified
+# -------------------------------------------------------------------------
 sub login_handler {
 	my $r = shift;
 	
@@ -86,8 +90,10 @@ sub login_handler {
 	my $sms_code_path = $r->dir_config('SMSCodePath') || '/private/sms_code.html';
 	my $default_path = $r->dir_config('DefaultPath') || '/';
 
-	# Get the template from the environment variable, or fall back to a default
-	my $sms_template = $ENV{'NOTIFICATION_SMS_CODE_MESSAGE'} || 'SMS Code: {sms_code}';
+	# Check request environment first, then system %ENV
+	my $sms_template = $r->subprocess_env('NOTIFICATION_SMS_CODE_MESSAGE') 
+	                || $ENV{'NOTIFICATION_SMS_CODE_MESSAGE'} 
+	                || 'SMS Code: {sms_code}';
 	
 	my ($dbh, $sth, $d);
 	if ($dbh = LockServer::Db->my_connect) {
@@ -110,8 +116,8 @@ sub login_handler {
 			# Generate new token and cookie
 			$cookie_token = unpack('H*', join('', map(chr(int Math::Random::Secure::rand(256)), 1..16)));
 			$cookie = CGI::Cookie->new(
-				-name  => 'auth_token',
-				-value => $cookie_token,
+				-name    => 'auth_token',
+				-value   => $cookie_token,
 				-expires => '+1y',
 				-httponly => 1,
 				-secure   => 0
@@ -152,7 +158,7 @@ sub login_handler {
 				if ($normalized_phone) {
 					my $quoted_normalized = $dbh->quote($normalized_phone);
 
-					# Query the active user ID from the targeted schema definitions
+					# Query the active user ID from targeted schema definitions
 					my $query = qq[
 						SELECT `id` FROM users 
 						WHERE `phone` = $quoted_normalized 
@@ -174,19 +180,19 @@ sub login_handler {
 					my $quoted_sms_code = $dbh->quote($sms_code);
 					my $quoted_phone_db = $dbh->quote($normalized_phone);
 
-					# Save status flags over the state transaction log parameters
+					# Save status flags over state parameters
 					$dbh->do(qq[UPDATE sms_auth SET `auth_state` = 'sms_code_sent', `sms_code` = $quoted_sms_code, `phone` = $quoted_phone_db, unix_time = ] . time() . qq[ WHERE cookie_token = $quoted_passed_cookie_token]) or warn $!;
 
-					# Replace the placeholder with the actual code
+					# Replace placeholder with actual code
 					my $sms_message = $sms_template;
 					$sms_message =~ s/\{sms_code\}/$sms_code/g;
 
-					send_notification($normalized_phone, $sms_message);
+					send_notification($r, $normalized_phone, $sms_message);
 
 					# Start with a session cookie
 					$cookie = CGI::Cookie->new(
-						-name  => 'auth_token',
-						-value => $cookie_token,
+						-name    => 'auth_token',
+						-value   => $cookie_token,
 						-httponly => 1,
 						-secure   => 0
 					);
@@ -207,7 +213,7 @@ sub login_handler {
 				my $stay_logged_in = $cgi->param('stay_logged_in');
 
 				if ($stay_logged_in) {
-					# Recreate persistent cookie (with expiration)
+					# Recreate persistent cookie (1 year expiration)
 					$cookie = CGI::Cookie->new(
 						-name    => 'auth_token',
 						-value   => $passed_cookie_token,
@@ -218,8 +224,8 @@ sub login_handler {
 				} else {
 					# Create session cookie (no expiration)
 					$cookie = CGI::Cookie->new(
-						-name  => 'auth_token',
-						-value => $passed_cookie_token,
+						-name    => 'auth_token',
+						-value   => $passed_cookie_token,
 						-httponly => 1,
 						-secure   => 0
 					);
@@ -253,8 +259,8 @@ sub login_handler {
 				if ($d->{session}) {
 					# Session cookie (no expiration)
 					$cookie = CGI::Cookie->new(
-						-name  => 'auth_token',
-						-value => $passed_cookie_token,
+						-name    => 'auth_token',
+						-value   => $passed_cookie_token,
 						-httponly => 1,
 						-secure   => 0
 					);
@@ -303,7 +309,9 @@ sub login_handler {
 	return Apache2::Const::HTTP_SERVICE_UNAVAILABLE;
 }
 
-# Handles logout request: delete token and expire cookie
+# -------------------------------------------------------------------------
+# Logout Handler: Deletes session token & expires client cookie
+# -------------------------------------------------------------------------
 sub logout_handler {
 	my $r = shift;
 	
@@ -318,8 +326,8 @@ sub logout_handler {
 			$passed_cookie_token = $cookies{'auth_token'} ? scalar $cookies{'auth_token'}->value : undef;
 		}
 		my $cookie = CGI::Cookie->new(
-			-name  => 'auth_token',
-			-value => $passed_cookie_token,
+			-name    => 'auth_token',
+			-value   => $passed_cookie_token,
 			-expires => '-1y',
 			-httponly => 1,
 			-secure   => 0
@@ -351,11 +359,13 @@ sub add_set_cookie_once {
 	$r->err_headers_out->add('Set-Cookie' => $cookie);
 }
 
-# Log authentication events into the general log table
+# -------------------------------------------------------------------------
+# Helper: Log Authentication Events
+# -------------------------------------------------------------------------
 sub log_auth_event {
 	my ($dbh, $r, $action, $quoted_cookie_token) = @_;
 
-	# Join users directly to sms_auth matching values on the respective phone strings
+	# Join users directly to sms_auth matching phone strings
 	my $sth = $dbh->prepare(qq[
 		SELECT u.username
 		FROM users u
@@ -366,7 +376,6 @@ sub log_auth_event {
 	]);
 	$sth->execute;
 	if (my $d = $sth->fetchrow_hashref) {
-		# Maps values directly into your native log schema specifications
 		$dbh->do(qq[
 			INSERT INTO log
 			(`user`, `rfid`, `action`, `source`, `time_stamp`)
@@ -378,6 +387,186 @@ sub log_auth_event {
 				NOW()
 			)
 		]) or warn $!;
+	}
+}
+
+# -------------------------------------------------------------------------
+# Helper: Send SMS via Configured SMTP Server
+# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+# Helper: Send SMS via Configured SMTP Server
+# -------------------------------------------------------------------------
+sub send_notification {
+	my ($r, $sms_number, $message) = @_;
+	return 0 unless $sms_number && $message;
+
+	eval {
+		unless (is_utf8($message)) {
+			$message = decode('UTF-8', $message);
+		}
+
+		my $phone_obj = LockServer::Number::Phone->new($sms_number);
+		if ($phone_obj && $phone_obj->is_valid) {
+			my $compact = $phone_obj->international;
+			$compact =~ s/^\+//; # strip leading plus sign for email format safety
+			$sms_number = $compact;
+		}
+
+		my $email = Email::MIME->create(
+			header_str => [
+				From    => 'meterlogger@meterlogger',
+				To      => $sms_number . '@meterlogger',
+				Subject => $message,
+			],
+			attributes => {
+				encoding     => 'quoted-printable',
+				charset      => 'UTF-8',
+				content_type => 'text/plain',
+			},
+			body => '',
+		);
+
+		# Extract SMTP settings safely across Apache request environment layers
+		my $smtp_host = ($r ? $r->subprocess_env('SMTP_HOST') : undef)     || $ENV{SMTP_HOST}     || '10.8.0.66';
+		my $smtp_port = ($r ? $r->subprocess_env('SMTP_PORT') : undef)     || $ENV{SMTP_PORT}     || 25;
+		my $smtp_user = ($r ? $r->subprocess_env('SMTP_USER') : undef)     || $ENV{SMTP_USER}     || '';
+		my $smtp_pass = ($r ? $r->subprocess_env('SMTP_PASSWORD') : undef) || $ENV{SMTP_PASSWORD} || '';
+
+		my $smtp = Net::SMTP->new($smtp_host, Port => $smtp_port, Timeout => 10);
+		unless ($smtp) {
+			log_warn("Cannot connect to SMTP server at $smtp_host:$smtp_port");
+			return 0;
+		}
+
+		# Authenticate if credentials are provided
+		if ($smtp_user ne '') {
+			unless ($smtp->auth($smtp_user, $smtp_pass)) {
+				log_warn("SMTP Auth failed for user '$smtp_user': " . $smtp->message());
+				$smtp->quit();
+				return 0;
+			}
+		}
+
+		# Execute plain SMTP commands with early exit on error
+		unless ($smtp->mail('meterlogger@meterlogger')) {
+			log_warn("SMTP MAIL FROM failed: " . $smtp->message());
+			$smtp->quit();
+			return 0;
+		}
+
+		unless ($smtp->to("$sms_number\@meterlogger")) {
+			log_warn("SMTP RCPT TO failed: " . $smtp->message());
+			$smtp->quit();
+			return 0;
+		}
+
+		unless ($smtp->data()) {
+			log_warn("SMTP DATA failed: " . $smtp->message());
+			$smtp->quit();
+			return 0;
+		}
+
+		unless ($smtp->datasend($email->as_string)) {
+			log_warn("SMTP DATASEND failed: " . $smtp->message());
+			$smtp->quit();
+			return 0;
+		}
+
+		unless ($smtp->dataend()) {
+			log_warn("SMTP DATAEND failed: " . $smtp->message());
+			$smtp->quit();
+			return 0;
+		}
+
+		$smtp->quit();
+		log_info("SMS sent to $sms_number via $smtp_host");
+		return 1;
+	};
+
+	if ($@) {
+		log_warn("Failed to send SMS to $sms_number: $@");
+		return 0;
+	}
+
+	return 0;
+}
+
+# -------------------------------------------------------------------------
+# Logging Utilities
+# -------------------------------------------------------------------------
+sub log_info {
+	my (@msgs) = @_;
+	my $opts = {};
+	if (ref $msgs[-1] eq 'HASH') {
+		$opts = pop @msgs;
+	}
+	_log_message(\*STDOUT, '', \@msgs, $opts);
+}
+
+sub log_warn {
+	my (@msgs) = @_;
+	my $opts = {};
+	if (ref $msgs[-1] eq 'HASH') {
+		$opts = pop @msgs;
+	}
+	_log_message(\*STDERR, 'WARN', \@msgs, $opts);
+}
+
+sub log_die {
+	my (@msgs) = @_;
+	my $opts = {};
+	if (ref $msgs[-1] eq 'HASH') {
+		$opts = pop @msgs;
+	}
+
+	# Log as WARN first
+	_log_message(\*STDERR, 'WARN', \@msgs, $opts);
+
+	# Exit immediately with joined messages
+	my $text = join('', map { defined $_ ? $_ : '' } @msgs);
+	chomp($text);
+	die "[" . ($opts->{no_script_name} ? '' : $script_name) . "] [WARN] $text\n";
+}
+
+sub _log_message {
+	my ($fh, $level, $msgs_ref, $opts) = @_;
+
+	my $disable_tag        = $opts->{-no_tag};
+	my $disable_script     = $opts->{-no_script_name};
+	my $custom_tag         = $opts->{-custom_tag};
+	my $custom_script_name = $opts->{-custom_script_name};
+
+	my ($caller_package, $caller_file, $caller_line) = caller(1);
+	my $module_name = ($caller_package && $caller_package ne 'main') ? $caller_package : undef;
+
+	my $script_display = $disable_script ? '' : ($custom_script_name || $script_name);
+
+	my $prefix = (!$disable_tag && $level) ? "[$level] " : '';
+
+	foreach my $msg (@$msgs_ref) {
+		my $text = defined $msg ? $msg : '';
+		chomp($text);
+
+		my $line;
+		if (defined $custom_tag) {
+			my @parts;
+			push @parts, "[$script_display]" if $script_display;
+			push @parts, "[$custom_tag]";
+			my $line_prefix = join(' ', @parts);
+			$line = "$line_prefix $prefix$text";
+		} elsif ($module_name && $caller_package eq $module_name && !$disable_script) {
+			$line = "[$script_display->$module_name] $prefix$text";
+		} elsif ($module_name && !$disable_script) {
+			$line = "[$script_display] [$module_name] $prefix$text";
+		} elsif ($module_name) {
+			$line = "[$module_name] $prefix$text";
+		} elsif (!$disable_script) {
+			$line = "[$script_display] $prefix$text";
+		} else {
+			$line = "$prefix$text";
+		}
+
+		print $fh "$line\n";
 	}
 }
 

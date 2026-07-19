@@ -180,6 +180,10 @@ services:
       - DEBUG=${DEBUG}
       - REDIS_HOST=lock-redis
       - NOTIFICATION_SMS_CODE_MESSAGE=${NOTIFICATION_SMS_CODE_MESSAGE}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
     networks:
       - lock_network
     logging:
