@@ -35,10 +35,10 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Database error' });
 	}
 
-	# Retrieve actual username by matching verified phone in sms_auth with users
+	# Retrieve actual username by matching verified phone in sms_auth with active users
 	my $quoted_token = $dbh->quote($cookie_token);
 	my $sth = $dbh->prepare(qq[
-		SELECT u.username
+		SELECT u.username, u.open_time
 		FROM sms_auth a
 		JOIN users u ON a.phone = u.phone
 		WHERE a.cookie_token = $quoted_token
@@ -50,14 +50,15 @@ sub handler {
 	my $row = $sth->fetchrow_hashref();
 	$sth->finish();
 
-	# Safeguard: Refuse to proceed if username is empty or missing
+	# Safeguard: Refuse to proceed if user is not verified or inactive
 	unless ($row && defined $row->{username} && $row->{username} ne '') {
 		return send_json($r, Apache2::Const::HTTP_UNAUTHORIZED, { error => 'User not verified or active' });
 	}
 
-	my $username = $row->{username};
+	my $username  = $row->{username};
+	my $open_time = defined $row->{open_time} ? int($row->{open_time}) : 2;
 
-	# Publish unlock event to Redis
+	# Publish unlock event to Redis (unlock_server.pl handles physical unlock & db audit log)
 	my $redis_host = $r->subprocess_env('REDIS_HOST') || $ENV{REDIS_HOST} || 'lock-redis';
 	
 	eval {
@@ -73,16 +74,21 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Failed to dispatch unlock event' });
 	}
 
-	return send_json($r, 200, { status => 'ok', message => 'Door unlocked', user => $username });
+	return send_json($r, 200, {
+		status    => 'ok',
+		message   => 'Door unlocked',
+		user      => $username,
+		open_time => $open_time,
+	});
 }
 
 # -------------------------------------------------------------------------
-# Helper: Send JSON and force HTTP status line in mod_perl
+# Helper: Send JSON and set HTTP status line explicitly for mod_perl
 # -------------------------------------------------------------------------
 sub send_json {
 	my ($r, $status_code, $data) = @_;
 
-	# Force Apache status line and status code explicitly
+	# Explicitly set status line and status code on Apache request object
 	if ($status_code == 200) {
 		$r->status_line("200 OK");
 		$r->status(200);

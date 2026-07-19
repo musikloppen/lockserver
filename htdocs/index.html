@@ -17,7 +17,6 @@
 		font-size: 24px;
 		margin-bottom: 16px;
 	}
-	/* Matching button styling from login and SMS code forms */
 	button {
 		font-size: 20px;
 		width: 140px;
@@ -28,10 +27,12 @@
 		margin-top: 20px;
 		font-size: 16px;
 		font-weight: bold;
+		min-height: 24px;
 	}
-	.success { color: green; }
-	.error { color: red; }
-	.busy { color: orange; }
+	.success { color: #2e7d32; }  /* Green: Door Unlocked */
+	.locked  { color: #555555; }  /* Dark Gray: Door Relocked */
+	.error   { color: #d32f2f; }  /* Red: Error / Failed */
+	.busy    { color: #ed6c02; }  /* Orange: Unlocking... */
 	</style>
 </head>
 <body>
@@ -40,9 +41,16 @@
 	<div id="status"></div>
 
 	<script>
+	let unlockTimer = null;
+	let resetTimer = null;
+
 	async function unlockDoor() {
 		const btn = document.getElementById('unlockBtn');
 		const status = document.getElementById('status');
+
+		// Clear all running state timers from previous clicks
+		if (unlockTimer) clearTimeout(unlockTimer);
+		if (resetTimer) clearTimeout(resetTimer);
 
 		btn.disabled = true;
 		status.className = 'busy';
@@ -57,29 +65,42 @@
 				}
 			});
 
-			// Safely parse JSON response
 			let data = {};
 			try {
 				data = await response.json();
-			} catch (e) {
-				// Fallback if response wasn't valid JSON
-			}
+			} catch (e) {}
 
 			if (response.ok && data.status === 'ok') {
+				const openTimeMs = (data.open_time || 2) * 1000;
+
+				// 1. Show Unlocked (Green)
 				status.className = 'success';
-				status.innerText = 'Door unlocked!';
+				status.innerText = `Door Unlocked (${data.user})`;
+
+				// 2. Transition to Locked (Gray) after open_time expires
+				unlockTimer = setTimeout(() => {
+					status.className = 'locked';
+					status.innerText = 'Door Locked';
+					btn.disabled = false;
+
+					// 3. Clear message completely after 2 seconds
+					resetTimer = setTimeout(() => {
+						status.className = '';
+						status.innerText = '';
+					}, 2000);
+				}, openTimeMs);
+
 			} else {
+				// Error state (Red)
 				status.className = 'error';
 				status.innerText = data.error || `Error (${response.status})`;
+				btn.disabled = false;
 			}
 		} catch (err) {
+			// Network error (Red)
 			status.className = 'error';
 			status.innerText = 'Network error';
-		} finally {
-			setTimeout(() => {
-				btn.disabled = false;
-				status.innerText = '';
-			}, 3000);
+			btn.disabled = false;
 		}
 	}
 	</script>
