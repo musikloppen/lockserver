@@ -52,18 +52,25 @@
 			const response = await fetch('/api/unlock', {
 				method: 'POST',
 				headers: {
-					'Content-Type': 'application/json'
+					'Content-Type': 'application/json',
+					'Accept': 'application/json'
 				}
 			});
 
-			const data = await response.json();
+			// Safely parse JSON response
+			let data = {};
+			try {
+				data = await response.json();
+			} catch (e) {
+				// Fallback if response wasn't valid JSON
+			}
 
 			if (response.ok && data.status === 'ok') {
 				status.className = 'success';
 				status.innerText = 'Door unlocked!';
 			} else {
 				status.className = 'error';
-				status.innerText = data.error || 'Failed to unlock';
+				status.innerText = data.error || `Error (${response.status})`;
 			}
 		} catch (err) {
 			status.className = 'error';

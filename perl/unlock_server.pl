@@ -113,43 +113,17 @@ sub log_docker {
 }
 
 sub handler_unlock_web {
-	my $i;
 	my ($res_cv, $user) = @_;
 
-#	my $dbh_thr = LockServer::Db->my_connect or warn $!;
-#	if ($dbh_thr) {
-#		my $sth_thr = $dbh_thr->prepare(qq[SELECT `username`, `active`, `sound_on_rfid_open` FROM users WHERE username = ] . $dbh_thr->quote($user) . " AND (`active_from` is NULL OR (`active_from` < NOW())) AND (`expire_at` is NULL OR (NOW() < `expire_at`))");
-#		$sth_thr->execute || warn $!;
-#		my ($user, $active, $sound_on_rfid_open) = $sth_thr->fetchrow;
-#		$sth_thr->finish;
-#		$dbh_thr->disconnect;
+	# Reject empty or undefined username — DO NOT UNLOCK
+	if (!defined $user || $user eq '') {
+		log_docker('err', "unlock_web rejected: empty or invalid username");
+		db_log(undef, undef, 'unauthorized_web_attempt', 'web');
+		$res_cv->result(undef) if defined $res_cv;
+		return;
+	}
 
-#		if ($active) {
-#			$res_cv->result(1) if defined $res_cv;
-#
-#			my $thr_buzzer = Proc::Simple->new();
-#			if ($sound_on_rfid_open) {
-#				$thr_buzzer->start(\&buzzer, $user);
-#			}
-
-#			unlock_web($user);
-			unlock_web('web');
-
-#			if ($sound_on_rfid_open) {
-#				if ($thr_buzzer->poll) {
-#					$thr_buzzer->kill;
-#				}
-#			}
-#		}
-#		else {
-#			$res_cv->result(undef) if defined $res_cv;
-#			db_log($user, undef, 'unauthorized', 'web');
-#			log_docker('info', "user $user not authorized");
-
-##			brute force resitance
-##			usleep(1000_000);
-#		}
-#	}
+	unlock_web($user);
 }
 
 sub handler_validate_web {
