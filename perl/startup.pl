@@ -23,5 +23,6 @@ use Math::Random::Secure ();
 # Pre-load custom target automation namespaces
 use LockServer::Db;
 use LockServer::SMSAuth;
+use LockServer::APIUnlock;
 
 1;

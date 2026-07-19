@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>LockServer Control</title>
+	<style>
+	body {
+		font-family: Verdana, sans-serif;
+		background: #f9f9f9;
+		color: #333;
+		text-align: center;
+		margin-top: 40px;
+	}
+	b {
+		display: block;
+		font-size: 24px;
+		margin-bottom: 16px;
+	}
+	/* Matching button styling from login and SMS code forms */
+	button {
+		font-size: 20px;
+		width: 140px;
+		height: 44px;
+		cursor: pointer;
+	}
+	#status {
+		margin-top: 20px;
+		font-size: 16px;
+		font-weight: bold;
+	}
+	.success { color: green; }
+	.error { color: red; }
+	.busy { color: orange; }
+	</style>
+</head>
+<body>
+	<b>Door Control</b>
+	<button id="unlockBtn" onclick="unlockDoor()">Unlock</button>
+	<div id="status"></div>
+
+	<script>
+	async function unlockDoor() {
+		const btn = document.getElementById('unlockBtn');
+		const status = document.getElementById('status');
+
+		btn.disabled = true;
+		status.className = 'busy';
+		status.innerText = 'Unlocking...';
+
+		try {
+			const response = await fetch('/api/unlock', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			});
+
+			const data = await response.json();
+
+			if (response.ok && data.status === 'ok') {
+				status.className = 'success';
+				status.innerText = 'Door unlocked!';
+			} else {
+				status.className = 'error';
+				status.innerText = data.error || 'Failed to unlock';
+			}
+		} catch (err) {
+			status.className = 'error';
+			status.innerText = 'Network error';
+		} finally {
+			setTimeout(() => {
+				btn.disabled = false;
+				status.innerText = '';
+			}, 3000);
+		}
+	}
+	</script>
+</body>
+</html>
