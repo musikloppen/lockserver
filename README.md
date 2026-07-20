@@ -179,17 +179,36 @@ docker exec -it lock_web ps aux | grep apache2
 ## 📂 Directory Structure
 
 ```text
-├── 000-default.conf       # Apache VirtualHost configuration
-├── Dockerfile             # Perl mod_perl Apache base image
-├── mpm_prefork.conf       # Low-memory Apache process tuning
-├── htdocs/                # Web frontend static assets (grant.html, etc.)
-└── perl/
-    └── LockServer/        # Core Perl Modules
-        ├── APIUnlock.pm          # Door trigger & Redis locking
-        ├── APIGrantTempAccess.pm # Guest access generation
-        ├── Db.pm                 # Database abstraction layer
-        ├── Number/Phone.pm       # Phone number normalization logic
-        └── Utils.pm              # Logging & SMTP/SMS notification helpers
+├── 000-default.conf             # Apache VirtualHost configuration
+├── Dockerfile.base              # Shared base Docker image for Perl services
+├── Dockerfile.web               # Apache + mod_perl web server container
+├── Dockerfile.unlock_server     # Door unlock hardware listener service
+├── Dockerfile.button_server     # Physical button input event daemon
+├── Dockerfile.rfid_server       # RFID card reader daemon
+├── Dockerfile.redis             # Redis message broker container
+├── Dockerfile.db                # MariaDB/MySQL database container
+├── docker-compose.yml           # Core Docker service definitions
+├── docker-compose.override.yml  # Local development overrides
+├── mpm_prefork.conf             # Low-memory Apache MPM process tuning
+├── lock_server.sql              # Database schema initialization script
+├── db/                          # Database persistent storage & configuration
+│   └── conf.d/                  # Custom MariaDB/MySQL config options
+│       └── 99-client.cnf
+├── htdocs/                      # Web frontend static assets & dashboard views
+│   └── private/                 # Authenticated views (SMS login & verification)
+└── perl/                        # Perl codebase
+    ├── startup.pl               # mod_perl initialization script
+    ├── unlock_server.pl         # Service: Listens on Redis channel & drives lock hardware
+    ├── button_server.pl         # Service: Handles physical exit button presses
+    ├── rfid_server.pl           # Service: RFID badge scanner handler
+    └── LockServer/              # Core Perl application modules
+        ├── APIUnlock.pm          # POST /api/unlock & Redis hardware mutex lock
+        ├── APIGrantTempAccess.pm # POST /api/grant_access & temporary pass creation
+        ├── SMSAuth.pm            # SMS login & verification workflow
+        ├── Db.pm                 # Database connection & query helper
+        ├── Utils.pm              # Logger & SMTP notification helper
+        └── Number/
+            └── Phone.pm          # Phone number normalization logic
 ```
 
 ---
