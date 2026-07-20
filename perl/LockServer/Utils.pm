@@ -58,15 +58,11 @@ sub send_notification {
 	eval {
 		# Extract SMTP settings safely (%ENV takes precedence over Apache subprocess_env)
 		my $smtp_host = $ENV{SMTP_HOST} || ($r ? $r->subprocess_env('SMTP_HOST') : undef);
-		my $smtp_port = $ENV{SMTP_PORT} || ($r ? $r->subprocess_env('SMTP_PORT') : undef);
+		my $smtp_port = $ENV{SMTP_PORT} || ($r ? $r->subprocess_env('SMTP_PORT') : undef) || 25;
+		use Data::Dumper; warn Dumper ($smtp_host, $smtp_port);
 
 		unless ($smtp_host) {
 			log_warn("Mandatory environment variable missing: SMTP_HOST", { -request => $r });
-			return 0;
-		}
-
-		unless ($smtp_port) {
-			log_warn("Mandatory environment variable missing: SMTP_PORT", { -request => $r });
 			return 0;
 		}
 
@@ -95,13 +91,22 @@ sub send_notification {
 			body => '',
 		);
 
-		my $smtp = Net::SMTP->new($smtp_host, Port => $smtp_port, Timeout => 10);
+		# Standard SMTPS (Port 465) uses SSL upfront, STARTTLS (Port 587/25) upgrades after handshake
+		my %smtp_opts = (
+			Port    => $smtp_port,
+			Timeout => 10,
+		);
+		if ($smtp_port == 465) {
+			$smtp_opts{SSL} = 1;
+		}
+
+		my $smtp = Net::SMTP->new($smtp_host, %smtp_opts);
 		unless ($smtp) {
 			log_warn("Cannot connect to SMTP server at $smtp_host:$smtp_port", { -request => $r });
 			return 0;
 		}
 
-		# Initiate STARTTLS if requested or running on TLS submission port 587
+		# Initiate STARTTLS if explicitly requested or standard submission port 587
 		my $use_tls = $ENV{SMTP_USE_TLS} || ($r ? $r->subprocess_env('SMTP_USE_TLS') : undef);
 		if ($use_tls || $smtp_port == 587) {
 			unless ($smtp->starttls()) {
