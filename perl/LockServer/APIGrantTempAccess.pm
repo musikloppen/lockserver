@@ -88,13 +88,13 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Invalid payload. "phone" and "duration_hours" required.' });
 	}
 
-	# 4. Normalize and validate phone number
+	# 4. Normalize and validate phone number (using compact format)
 	my $phone_obj = LockServer::Number::Phone->new($req_data->{phone});
 	unless ($phone_obj && $phone_obj->is_valid) {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Invalid phone number format' });
 	}
 
-	my $phone = $phone_obj->international; # Normalized format (e.g. 004512345678)
+	my $phone = $phone_obj->compact; # Normalized compact format
 
 	my $hours = int($req_data->{duration_hours});
 	if ($hours < 1 || $hours > 168) {
