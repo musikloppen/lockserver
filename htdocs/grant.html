@@ -208,7 +208,8 @@
 
 				if (response.ok && data.status === 'ok') {
 					status.className = 'success';
-					status.innerHTML = `Access granted for ${data.phone} (${data.expires_in})!<br>SMS dispatched.`;
+					const formattedDuration = humanDuration(currentSelectedHours);
+					status.innerHTML = `Access granted for ${data.phone} (${formattedDuration})!<br>SMS dispatched.`;
 					document.getElementById('phone').value = '';
 					document.getElementById('guestName').value = '';
 				} else {
