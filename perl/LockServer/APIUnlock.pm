@@ -63,13 +63,35 @@ sub handler {
 	my $redis_host = $ENV{REDIS_HOST} || ($r ? $r->subprocess_env('REDIS_HOST') : undef) || 'lock-redis';
 	my $redis_port = $ENV{REDIS_PORT} || ($r ? $r->subprocess_env('REDIS_PORT') : undef) || 6379;
 
-	eval {
-		my $redis = Redis->new(
+	# 1. Connect to Redis
+	my $redis = eval {
+		Redis->new(
 			server       => "$redis_host:$redis_port",
 			sock_timeout => 3,
 			reconnect    => 5,
 			every        => 500,
 		);
+	};
+
+	unless ($redis) {
+		$r->log_error("Failed to connect to Redis: $@");
+		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Failed to connect to Redis' });
+	}
+
+	# 2. Hardware mutex lock: open_time in ms + 200ms safety buffer
+	my $lock_key    = 'lock:hardware:door_busy';
+	my $lock_ttl_ms = ($open_time * 1000) + 200;
+
+	# SET lock_key username NX PX lock_ttl_ms
+	my $acquired = eval { $redis->set($lock_key, $username, 'NX', 'PX', $lock_ttl_ms) };
+
+	unless ($acquired) {
+		$r->log_error("Unlock rejected for '$username': Door operation already in progress");
+		return send_json($r, 429, { error => 'Door activation already in progress. Please wait.' });
+	}
+
+	# 3. Publish unlock event
+	eval {
 		$redis->publish('lock_events', "unlock_web:$username");
 	};
 
@@ -96,6 +118,9 @@ sub send_json {
 	if ($status_code == 200) {
 		$r->status_line("200 OK");
 		$r->status(200);
+	} elsif ($status_code == 429) {
+		$r->status_line("429 Too Many Requests");
+		$r->status(429);
 	} else {
 		$r->status($status_code);
 	}
