@@ -44,6 +44,7 @@ services:
       MARIADB_DATABASE: ${DB_NAME}
       MARIADB_USER: ${DB_USER}
       MARIADB_PASSWORD: ${DB_PASS}
+      TZ: Europe/Copenhagen
     volumes:
       - ./db:/var/lib/mysql
     healthcheck:
@@ -98,6 +99,7 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
+      - TZ=Europe/Copenhagen
     devices:
       - "/dev/gpiomem:/dev/gpiomem"
       - "/dev/mem:/dev/mem"
@@ -132,6 +134,7 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
+      - TZ=Europe/Copenhagen
     privileged: true
     networks:
       - lock_network
@@ -163,6 +166,7 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
+      - TZ=Europe/Copenhagen
     devices:
       - "/dev/gpiomem:/dev/gpiomem"
       - "/dev/mem:/dev/mem"
@@ -181,8 +185,6 @@ services:
     container_name: lock_web
     hostname: lock-web
     restart: always
-    ports:
-      - "80:80"
     depends_on:
       - perl_base
       - redis
@@ -203,12 +205,40 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_USE_TLS=${SMTP_USE_TLS}
       - DEBUG=${DEBUG}
+      - TZ=Europe/Copenhagen
     networks:
       - lock_network
     logging:
       driver: "syslog"
       options:
         tag: "docker/web"
+
+  openresty:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.openresty
+    container_name: lock_openresty
+    hostname: lock-openresty
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - perl_base
+      - redis
+      - unlock_server
+      - db
+      - setup_config
+      - web
+    volumes:
+      - ./openresty/lua/dnsbl_whitelist:/usr/local/openresty/lualib/dnsbl_whitelist
+    restart: always
+    environment:
+      - TZ=Europe/Copenhagen
+    networks:
+      - lock_network
+    logging:
+      driver: "syslog"
+      options:
+        tag: "docker/openresty"
 
 networks:
   lock_network:

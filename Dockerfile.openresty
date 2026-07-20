@@ -1,0 +1,50 @@
+FROM perl-base:latest
+
+# 1. Install build tools, curl, and OpenResty C compilation dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	curl \
+	ca-certificates \
+	build-essential \
+	libpcre3-dev \
+	libssl-dev \
+	zlib1g-dev \
+	perl \
+	luarocks \
+	git \
+	&& rm -rf /var/lib/apt/lists/*
+
+# 2. Automatically fetch, compile, and install OpenResty with SSL, HTTP/2, and RealIP modules
+RUN OPENRESTY_VERSION=$(curl -s https://openresty.org/en/download.html | grep -oP 'openresty-\d+\.\d+\.\d+\.\d+\.tar\.gz' | head -n 1) \
+	&& echo "Downloading latest OpenResty: ${OPENRESTY_VERSION}" \
+	&& curl -sSLO "https://openresty.org/download/${OPENRESTY_VERSION}" \
+	&& tar -xzf "${OPENRESTY_VERSION}" \
+	&& cd openresty-* \
+	&& ./configure -j1 \
+		--with-http_ssl_module \
+		--with-http_v2_module \
+		--with-http_realip_module \
+	&& make \
+	&& make install \
+	&& cd .. && rm -rf openresty-*
+
+# 3. Install required Lua libraries via Luarocks
+RUN luarocks install lua-resty-http
+RUN luarocks install luafilesystem
+
+# 4. Copy custom configurations and Lua modules
+COPY openresty/nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
+COPY openresty/lua/access_control.lua /usr/local/openresty/lualib/access_control.lua
+COPY openresty/lua/rate_limit.lua /usr/local/openresty/lualib/rate_limit.lua
+COPY openresty/lua/dnsbl_check.lua /usr/local/openresty/lualib/dnsbl_check.lua
+
+# 5. Create runtime directories and copy error page templates
+RUN mkdir -p /usr/local/openresty/html /usr/local/openresty/lualib/dnsbl_whitelist
+COPY htdocs/backend_down.html /usr/local/openresty/html/backend_down.html
+COPY htdocs/blocked_ip.html /usr/local/openresty/html/blocked_ip.html
+
+ENV LUA_PATH="/usr/local/openresty/lualib/?.lua;/usr/local/openresty/lualib/?/init.lua;;"
+ENV PATH="/usr/local/openresty/nginx/sbin:/usr/local/openresty/bin:$PATH"
+
+EXPOSE 80 443
+
+CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]

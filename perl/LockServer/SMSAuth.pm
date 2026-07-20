@@ -384,7 +384,7 @@ sub log_auth_event {
 				] . $dbh->quote($d->{username}) . qq[,
 				NULL,
 				] . $dbh->quote("web_" . $action) . qq[,
-				'web_auth',
+				'web',
 				NOW()
 			)
 		]) or warn $!;
