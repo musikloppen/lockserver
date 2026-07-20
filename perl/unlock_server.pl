@@ -62,21 +62,18 @@ ls_lock();
 
 # start servers...
 
-# --- Redis Connection Initialization ---
+# --- Redis Connection Initialization (AnyEvent::Redis) ---
 my $redis_host = $ENV{REDIS_HOST} || 'lock-redis';
 my $redis_port = $ENV{REDIS_PORT} || 6379;
 
-my $redis;
-eval {
-	$redis = Redis->new(
-		server    => "$redis_host:$redis_port",
-		reconnect => 10,     # try reconnecting for up to 10 seconds
-		every     => 1000,   # wait 1000ms between reconnect attempts
-	);
-};
-if ($@ || !$redis) {
-	log_warn("Failed to connect to Redis at $redis_host:$redis_port: $@");
-}
+my $redis = AnyEvent::Redis->new(
+	host     => $redis_host,
+	port     => $redis_port,
+	on_error => sub {
+		my ($fatal, $message) = @_;
+		log_warn("Redis connection error ($fatal): $message");
+	},
+);
 
 # Asynchronously subscribe to the centralized message bus channel
 $redis->subscribe('lock_events', sub {
