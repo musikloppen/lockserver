@@ -2,6 +2,7 @@
 local _M = {}
 
 function _M.run()
+	local ngx = ngx or _G.ngx
 	local limit_store = ngx.shared.rate_limit_store
 
 	local ip = ngx.var.remote_addr
@@ -13,9 +14,10 @@ function _M.run()
 	local window = 30
 	local limit = 20
 
-	-- Atomically increment key counter directly to prevent concurrent execution lookup misses
-	local reqs, err = limit_store:incr(key, 1, 0, window)
+	-- 1. Try to increment existing key (2 arguments for maximum ngx_lua compatibility)
+	local reqs, err = limit_store:incr(key, 1)
 	if not reqs then
+		-- Key doesn't exist yet, initialize it
 		limit_store:set(key, 1, window)
 		reqs = 1
 	end

@@ -3,7 +3,6 @@
 -- Local requires
 local dnsbl = require("dnsbl_check")
 local rate_limit = require("rate_limit")
-local ngx = ngx
 local pcall = pcall
 
 -- Run DNSBL check safely

@@ -43,15 +43,8 @@ local function load_whitelist(dir)
 	local ips = {}
 	
 	if not lfs_lib then
-		-- Temporarily detach OpenResty's global write guard metatable completely
-		local old_mt = getmetatable(_G)
-		setmetatable(_G, nil)
-
-		-- Execute the require step while the guard is disabled
+		-- Execute the require step safely without touching global metatables
 		local status, res = pcall(require, "lfs")
-
-		-- Restore the original environment configuration instantly
-		setmetatable(_G, old_mt)
 
 		if not status then
 			ngx.log(ngx.ERR, "Failed to require lfs: ", res)
@@ -59,9 +52,6 @@ local function load_whitelist(dir)
 		end
 
 		lfs_lib = res
-		
-		-- Safely drop the global leak using rawset to bypass meta hooks
-		rawset(_G, "lfs", nil)
 	end
 
 	local attr, err = lfs_lib.attributes(dir)
