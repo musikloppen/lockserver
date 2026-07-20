@@ -49,7 +49,7 @@ sub generate_guest_username {
 }
 
 # -------------------------------------------------------------------------
-# Helper: Send SMS via Configured SMTP Server
+# Helper: Send SMS via Configured SMTP Server (Supports DEBUG Dry-Run Mode)
 # -------------------------------------------------------------------------
 sub send_notification {
 	my ($r, $sms_number, $message) = @_;
@@ -65,6 +65,13 @@ sub send_notification {
 
 		# Strictly enforce 00 prefix formatting (e.g., 004512345678)
 		$sms_number = $phone_obj->international;
+
+		# Check DEBUG mode
+		my $debug = $ENV{DEBUG} || ($r ? $r->subprocess_env('DEBUG') : undef);
+		if ($debug) {
+			log_info("[DEBUG DRY-RUN] Skipping actual SMTP dispatch. SMS to $sms_number: \"$message\"", { -request => $r });
+			return 1;
+		}
 
 		# Extract SMTP settings safely (%ENV takes precedence over Apache subprocess_env)
 		my $smtp_host = $ENV{SMTP_HOST} || ($r ? $r->subprocess_env('SMTP_HOST') : undef);
