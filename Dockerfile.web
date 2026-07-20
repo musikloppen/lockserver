@@ -12,11 +12,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	liblwp-protocol-https-perl \
 	&& rm -rf /var/lib/apt/lists/*
 
-RUN a2enmod expires remoteip headers proxy proxy_http rewrite
+RUN a2enmod mpm_prefork expires remoteip headers proxy proxy_http rewrite
 
 WORKDIR /var/www/lock_server
 COPY ./htdocs /var/www/lock_server
 COPY ./000-default.conf /etc/apache2/sites-available/
+COPY ./mpm_prefork.conf /etc/apache2/mods-available/mpm_prefork.conf
 COPY ./perl /etc/apache2/perl
 
 RUN ln -sf /dev/stdout /var/log/apache2/access.log \
