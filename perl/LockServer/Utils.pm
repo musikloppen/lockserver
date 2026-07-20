@@ -57,13 +57,17 @@ sub send_notification {
 	return 0 unless $sms_number && $message;
 
 	eval {
-		# Extract SMTP settings safely from request env or system %ENV
-		my $smtp_host = ($r ? $r->subprocess_env('SMTP_HOST') : undef) || $ENV{SMTP_HOST} || 'postfix';
-		my $smtp_port = ($r ? $r->subprocess_env('SMTP_PORT') : undef) || $ENV{SMTP_PORT} || 587;
-		use Data::Dumper; warn Dumper ($smtp_host, $smtp_port);
+		# Extract SMTP settings safely (%ENV takes precedence over Apache subprocess_env)
+		my $smtp_host = $ENV{SMTP_HOST} || ($r ? $r->subprocess_env('SMTP_HOST') : undef);
+		my $smtp_port = $ENV{SMTP_PORT} || ($r ? $r->subprocess_env('SMTP_PORT') : undef);
 
 		unless ($smtp_host) {
 			log_warn("Mandatory environment variable missing: SMTP_HOST", { -request => $r });
+			return 0;
+		}
+
+		unless ($smtp_port) {
+			log_warn("Mandatory environment variable missing: SMTP_PORT", { -request => $r });
 			return 0;
 		}
 
