@@ -38,15 +38,16 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Database error' });
 	}
 
-	# 2. Look up the verified user who made this request
+	# 2. Look up the verified user who made this request (excluding 'guest' group)
 	my $quoted_token = $dbh->quote($cookie_token);
 	my $sth = $dbh->prepare(qq[
-		SELECT u.username
+		SELECT u.username, u.group
 		FROM sms_auth a
 		JOIN users u ON a.phone = u.phone
 		WHERE a.cookie_token = $quoted_token
 			AND a.auth_state = 'sms_code_verified'
 			AND u.active = 1
+			AND u.group != 'guest'
 			AND (u.active_from IS NULL OR u.active_from < NOW())
 			AND (u.expire_at IS NULL OR NOW() < u.expire_at)
 		LIMIT 1
