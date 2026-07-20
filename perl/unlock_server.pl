@@ -11,6 +11,7 @@ use Proc::Simple;
 
 use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
+use LockServer::Utils qw(log_info log_warn log_die);
 
 my $DEBUG = $ENV{DEBUG} || 0;
 
@@ -61,12 +62,21 @@ ls_lock();
 
 # start servers...
 
-# Initialize Redis client connection instead of legacy AnyEvent JSONRPC TCP Server
+# --- Redis Connection Initialization ---
 my $redis_host = $ENV{REDIS_HOST} || 'lock-redis';
-my $redis = AnyEvent::Redis->new(
-	host => $redis_host,
-	port => 6379,
-);
+my $redis_port = $ENV{REDIS_PORT} || 6379;
+
+my $redis;
+eval {
+	$redis = Redis->new(
+		server    => "$redis_host:$redis_port",
+		reconnect => 10,     # try reconnecting for up to 10 seconds
+		every     => 1000,   # wait 1000ms between reconnect attempts
+	);
+};
+if ($@ || !$redis) {
+	log_warn("Failed to connect to Redis at $redis_host:$redis_port: $@");
+}
 
 # Asynchronously subscribe to the centralized message bus channel
 $redis->subscribe('lock_events', sub {

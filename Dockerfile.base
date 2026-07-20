@@ -1,0 +1,33 @@
+FROM arm32v5/debian:buster-slim
+
+LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
+
+# Fix the dead upstream Debian Buster archive mirrors
+RUN echo "deb [check-valid-until=no] http://archive.debian.org/debian/ buster main contrib non-free" > /etc/apt/sources.list && \
+	echo "deb [check-valid-until=no] http://archive.debian.org/debian-security buster/updates main contrib non-free" >> /etc/apt/sources.list
+
+# Install all common system dependencies and build tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+	build-essential \
+	wget \
+	libssl-dev \
+	libdbi-perl \
+	libdbd-mysql-perl \
+	libemail-mime-perl \
+	libemail-simple-perl \
+	libnumber-phone-perl \
+	libjson-perl \
+	libjson-xs-perl \
+	libredis-perl \
+	libmath-random-secure-perl \
+	libcgi-pm-perl \
+	libio-socket-ssl-perl \
+	libnet-ssleay-perl \
+	cpanminus \
+	&& rm -rf /var/lib/apt/lists/*
+
+# Install shared CPAN modules used across worker services
+RUN cpanm AnyEvent AnyEvent::Redis Redis
+
+# Copy shared Perl library code into global Perl @INC path
+COPY perl/LockServer/ /usr/local/share/perl5/LockServer/

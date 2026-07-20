@@ -4,7 +4,6 @@ use strict;
 use warnings;
 use utf8;
 
-use Apache2::Log (); # Required for mod_perl $r->log_error()
 use Net::SMTP;
 use Email::MIME;
 use Encode qw(decode is_utf8);
@@ -100,6 +99,27 @@ sub send_notification {
 		unless ($smtp) {
 			log_warn("Cannot connect to SMTP server at $smtp_host:$smtp_port", { -request => $r });
 			return 0;
+		}
+
+		# Initiate STARTTLS if requested or running on TLS submission port 587
+		my $use_tls = $ENV{SMTP_USE_TLS} || ($r ? $r->subprocess_env('SMTP_USE_TLS') : undef);
+		if ($use_tls || $smtp_port == 587) {
+			unless ($smtp->starttls()) {
+				log_warn("SMTP STARTTLS failed: " . $smtp->message(), { -request => $r });
+				$smtp->quit();
+				return 0;
+			}
+		}
+
+		# Authenticate if credentials are provided in environment
+		my $smtp_user = $ENV{SMTP_USER} || ($r ? $r->subprocess_env('SMTP_USER') : undef);
+		my $smtp_pass = $ENV{SMTP_PASSWORD} || ($r ? $r->subprocess_env('SMTP_PASSWORD') : undef);
+		if ($smtp_user && $smtp_pass) {
+			unless ($smtp->auth($smtp_user, $smtp_pass)) {
+				log_warn("SMTP AUTH failed: " . $smtp->message(), { -request => $r });
+				$smtp->quit();
+				return 0;
+			}
 		}
 
 		unless ($smtp->mail('meterlogger@meterlogger')) {

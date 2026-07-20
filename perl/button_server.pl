@@ -42,9 +42,21 @@ my $CONTACT_PIN = get_defaults('contact_pin') || 13;
 $SIG{INT} = \&stop_server;
 
 # main
-# Initialize Redis client connection
+# --- Redis Connection Initialization ---
 my $redis_host = $ENV{REDIS_HOST} || 'lock-redis';
-my $redis = Redis->new(server => "$redis_host:6379");
+my $redis_port = $ENV{REDIS_PORT} || 6379;
+
+my $redis;
+eval {
+	$redis = Redis->new(
+		server    => "$redis_host:$redis_port",
+		reconnect => 10,     # try reconnecting for up to 10 seconds
+		every     => 1000,   # wait 1000ms between reconnect attempts
+	);
+};
+if ($@ || !$redis) {
+	log_warn("Failed to connect to Redis at $redis_host:$redis_port: $@");
+}
 
 if (!$DEBUG) {
 	# set up lock interface

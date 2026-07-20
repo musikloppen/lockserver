@@ -6,6 +6,7 @@ use utf8;
 
 use Apache2::RequestRec ();
 use Apache2::RequestIO ();
+use Apache2::Log ();
 use Apache2::Const -compile => qw(OK HTTP_METHOD_NOT_ALLOWED HTTP_UNAUTHORIZED HTTP_INTERNAL_SERVER_ERROR);
 use CGI::Cookie ();
 use JSON qw(encode_json);
@@ -58,13 +59,16 @@ sub handler {
 	my $username  = $row->{username};
 	my $open_time = defined $row->{open_time} ? int($row->{open_time}) : 2;
 
-	# Publish unlock event to Redis (unlock_server.pl handles physical unlock & db audit log)
-	my $redis_host = $r->subprocess_env('REDIS_HOST') || $ENV{REDIS_HOST} || 'lock-redis';
-	
+	# Prefer system/Docker %ENV first, then Apache subprocess_env
+	my $redis_host = $ENV{REDIS_HOST} || ($r ? $r->subprocess_env('REDIS_HOST') : undef) || 'lock-redis';
+	my $redis_port = $ENV{REDIS_PORT} || ($r ? $r->subprocess_env('REDIS_PORT') : undef) || 6379;
+
 	eval {
 		my $redis = Redis->new(
-			server       => "$redis_host:6379",
+			server       => "$redis_host:$redis_port",
 			sock_timeout => 3,
+			reconnect    => 5,
+			every        => 500,
 		);
 		$redis->publish('lock_events', "unlock_web:$username");
 	};

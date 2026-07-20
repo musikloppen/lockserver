@@ -1,6 +1,13 @@
 version: '3.3'
 
 services:
+  perl_base:
+    build:
+      context: .
+      dockerfile: ./Dockerfile.base
+    image: perl-base:1.0
+    entrypoint: ["echo", "Base image build complete."]
+
   setup_config:
     image: busybox
     container_name: setup_config
@@ -77,6 +84,7 @@ services:
     hostname: lock-unlock-server
     restart: always
     depends_on:
+      - perl_base
       - redis
       - db
       - setup_config
@@ -109,6 +117,7 @@ services:
     hostname: lock-rfid-server
     restart: always
     depends_on:
+      - perl_base
       - redis
       - unlock_server
       - db
@@ -139,6 +148,7 @@ services:
     hostname: lock-button-server
     restart: always
     depends_on:
+      - perl_base
       - redis
       - unlock_server
       - db
@@ -174,6 +184,7 @@ services:
     ports:
       - "80:80"
     depends_on:
+      - perl_base
       - redis
       - unlock_server
       - db
