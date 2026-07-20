@@ -56,10 +56,19 @@ sub send_notification {
 	return 0 unless $sms_number && $message;
 
 	eval {
+		# Validate and normalize phone number
+		my $phone_obj = LockServer::Number::Phone->new($sms_number);
+		unless ($phone_obj && $phone_obj->is_valid) {
+			log_warn("Cannot send SMS: Invalid phone number format '$sms_number'", { -request => $r });
+			return 0;
+		}
+
+		# Strictly enforce 00 prefix formatting (e.g., 004512345678)
+		$sms_number = $phone_obj->international;
+
 		# Extract SMTP settings safely (%ENV takes precedence over Apache subprocess_env)
 		my $smtp_host = $ENV{SMTP_HOST} || ($r ? $r->subprocess_env('SMTP_HOST') : undef);
 		my $smtp_port = $ENV{SMTP_PORT} || ($r ? $r->subprocess_env('SMTP_PORT') : undef) || 25;
-		use Data::Dumper; warn Dumper ($smtp_host, $smtp_port);
 
 		unless ($smtp_host) {
 			log_warn("Mandatory environment variable missing: SMTP_HOST", { -request => $r });
@@ -68,13 +77,6 @@ sub send_notification {
 
 		unless (is_utf8($message)) {
 			$message = decode('UTF-8', $message);
-		}
-
-		my $phone_obj = LockServer::Number::Phone->new($sms_number);
-		if ($phone_obj && $phone_obj->is_valid) {
-			my $compact = $phone_obj->international;
-			$compact =~ s/^\+//; # strip leading plus sign for email format safety
-			$sms_number = $compact;
 		}
 
 		my $email = Email::MIME->create(

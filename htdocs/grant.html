@@ -5,56 +5,244 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Grant Temporary Access</title>
 	<style>
-	body {
-		font-family: Verdana, sans-serif;
-		background: #f9f9f9;
-		color: #333;
-		text-align: center;
-		margin-top: 40px;
-	}
-	.card {
-		background: #ffffff;
-		max-width: 420px;
-		margin: 0 auto;
-		padding: 24px;
-		border-radius: 8px;
-		box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-	}
-	h2 { margin-top: 0; color: #222; }
-	.field { margin-bottom: 20px; text-align: left; }
-	label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px; }
-	input[type="text"] {
-		width: 100%;
-		padding: 10px;
-		font-size: 16px;
-		box-sizing: border-box;
-		border: 1px solid #ccc;
-		border-radius: 4px;
-	}
-	.slider-val {
-		font-size: 18px;
-		font-weight: bold;
-		color: #0288d1;
-		margin-top: 6px;
-	}
-	input[type="range"] { width: 100%; margin-top: 8px; }
-	button {
-		font-size: 18px;
-		width: 100%;
-		height: 46px;
-		cursor: pointer;
-		background-color: #2e7d32;
-		color: white;
-		border: none;
-		border-radius: 4px;
-		font-weight: bold;
-	}
-	button:disabled { background-color: #ccc; cursor: not-allowed; }
-	#status { margin-top: 18px; font-size: 14px; font-weight: bold; }
-	.success { color: #2e7d32; }
-	.error   { color: #d32f2f; }
-	.busy    { color: #ed6c02; }
+		body {
+			font-family: Verdana, Geneva, sans-serif;
+			background: #f9f9f9;
+			color: #333;
+			text-align: center;
+			margin: 0;
+			padding: 16px;
+		}
+
+		.card {
+			background: #ffffff;
+			max-width: 420px;
+			margin: 20px auto;
+			padding: 24px;
+			border-radius: 8px;
+			box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+			box-sizing: border-box;
+		}
+
+		h2 {
+			margin-top: 0;
+			color: #222;
+		}
+
+		.field {
+			margin-bottom: 20px;
+			text-align: left;
+		}
+
+		label {
+			display: block;
+			font-weight: bold;
+			margin-bottom: 6px;
+			font-size: 14px;
+		}
+
+		input[type="text"] {
+			width: 100%;
+			padding: 10px;
+			font-size: 16px;
+			box-sizing: border-box;
+			border: 1px solid #ccc;
+			border-radius: 4px;
+		}
+
+		#durationDisplay {
+			display: block;
+			font-weight: bold;
+			font-size: 1.3rem;
+			margin: 6px 0 10px;
+		}
+
+		/* Touch-friendly slider styling from Snooze */
+		input[type=range] {
+			width: 100%;
+			height: 44px; /* touch-friendly */
+			margin: 8px 0;
+			box-sizing: border-box;
+		}
+
+		/* WebKit (iOS / Chrome) */
+		input[type=range]::-webkit-slider-thumb {
+			-webkit-appearance: none;
+			height: 28px;
+			width: 28px;
+			border-radius: 50%;
+			background: #007aff;
+			cursor: pointer;
+		}
+
+		/* Firefox */
+		input[type=range]::-moz-range-thumb {
+			height: 28px;
+			width: 28px;
+			border-radius: 50%;
+			background: #007aff;
+			cursor: pointer;
+		}
+
+		button {
+			font-size: 18px;
+			width: 100%;
+			height: 46px;
+			cursor: pointer;
+			background-color: #2e7d32;
+			color: white;
+			border: none;
+			border-radius: 4px;
+			font-weight: bold;
+		}
+
+		button:disabled {
+			background-color: #ccc;
+			cursor: not-allowed;
+		}
+
+		#status {
+			margin-top: 18px;
+			font-size: 14px;
+			font-weight: bold;
+		}
+
+		.success { color: #2e7d32; }
+		.error   { color: #d32f2f; }
+		.busy    { color: #ed6c02; }
+
+		@media (min-width: 600px) {
+			body {
+				max-width: 500px;
+				margin: auto;
+			}
+		}
 	</style>
+
+	<script>
+		// Min and Max duration in hours (1 hour to 7 days / 168 hours)
+		const minDurationHours = 1;
+		const maxDurationHours = 168;
+		let currentSelectedHours = 2; // Default start value
+
+		// Human-readable duration string generator
+		function humanDuration(hours) {
+			if (hours === undefined || hours === null) return '';
+
+			let value, unit;
+			if (hours < 24) {
+				value = hours;
+				unit = 'hour';
+			} else if (hours < 168) {
+				value = Math.floor(hours / 24);
+				unit = 'day';
+			} else {
+				value = Math.floor(hours / 168);
+				unit = 'week';
+			}
+
+			if (value !== 1) unit += 's';
+			return `${value} ${unit}`;
+		}
+
+		// Snap raw calculated hours to clean human intervals
+		function snapToFormattedHours(hours) {
+			if (hours < 24) return Math.max(1, Math.round(hours));         // Snap to nearest hour under 1 day
+			if (hours < 168) return Math.round(hours / 24) * 24;          // Snap to nearest day
+			return 168;                                                   // Max out at 1 week (168 hours)
+		}
+
+		// Logarithmic slider ↔ hours conversion functions
+		function sliderToHours(value) {
+			const scale = value / 100;
+			return Math.round(minDurationHours * Math.pow(maxDurationHours / minDurationHours, scale));
+		}
+
+		function hoursToSlider(hours) {
+			if (hours <= minDurationHours) return 0;
+			return Math.log(hours / minDurationHours) / Math.log(maxDurationHours / minDurationHours) * 100;
+		}
+
+		function updateSliderUI(hours) {
+			const snappedHours = snapToFormattedHours(hours);
+			currentSelectedHours = snappedHours;
+
+			document.getElementById('durationDisplay').textContent = humanDuration(snappedHours);
+			
+			// Optional haptic feedback on touch devices
+			if (navigator.vibrate) navigator.vibrate(10);
+		}
+
+		async function grantAccess() {
+			const name = document.getElementById('guestName').value.trim();
+			const phone = document.getElementById('phone').value.trim();
+			const btn = document.getElementById('grantBtn');
+			const status = document.getElementById('status');
+
+			if (!phone) {
+				status.className = 'error';
+				status.innerText = 'Please enter a valid phone number.';
+				return;
+			}
+
+			btn.disabled = true;
+			status.className = 'busy';
+			status.innerText = 'Creating user & sending SMS...';
+
+			try {
+				const response = await fetch('/api/grant_access', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Accept': 'application/json'
+					},
+					body: JSON.stringify({
+						name: name,
+						phone: phone,
+						duration_hours: currentSelectedHours
+					})
+				});
+
+				let data = {};
+				try { data = await response.json(); } catch(e) {}
+
+				if (response.ok && data.status === 'ok') {
+					status.className = 'success';
+					status.innerHTML = `Access granted for ${data.phone} (${data.expires_in})!<br>SMS dispatched.`;
+					document.getElementById('phone').value = '';
+					document.getElementById('guestName').value = '';
+				} else {
+					status.className = 'error';
+					status.innerText = data.error || `Error (${response.status})`;
+				}
+			} catch (err) {
+				status.className = 'error';
+				status.innerText = 'Network error';
+			} finally {
+				btn.disabled = false;
+			}
+		}
+
+		window.addEventListener('DOMContentLoaded', () => {
+			const slider = document.getElementById('durationSlider');
+
+			// Set initial slider thumb position for default 2 hours
+			slider.value = hoursToSlider(currentSelectedHours);
+			updateSliderUI(currentSelectedHours);
+
+			slider.addEventListener('input', () => {
+				const hours = sliderToHours(parseInt(slider.value, 10));
+				updateSliderUI(hours);
+			});
+
+			slider.addEventListener('change', () => {
+				const hours = sliderToHours(parseInt(slider.value, 10));
+				const snapped = snapToFormattedHours(hours);
+				slider.value = hoursToSlider(snapped);
+				updateSliderUI(snapped);
+			});
+		});
+	</script>
 </head>
 <body>
 	<div class="card">
@@ -71,77 +259,15 @@
 		</div>
 
 		<div class="field">
-			<label for="duration">Access Duration:</label>
-			<input type="range" id="duration" min="1" max="168" value="2" oninput="updateDurationLabel(this.value)">
-			<div class="slider-val" id="durationLabel">2 Hours</div>
+			<label for="durationSlider">
+				Access Duration
+				<span id="durationDisplay">2 hours</span>
+			</label>
+			<input type="range" id="durationSlider" min="0" max="100" step="1">
 		</div>
 
 		<button id="grantBtn" onclick="grantAccess()">Grant & Send SMS</button>
 		<div id="status"></div>
 	</div>
-
-	<script>
-	function updateDurationLabel(val) {
-		const hours = parseInt(val, 10);
-		const label = document.getElementById('durationLabel');
-		if (hours < 24) {
-			label.innerText = `${hours} Hour${hours > 1 ? 's' : ''}`;
-		} else {
-			const days = (hours / 24).toFixed(1).replace('.0', '');
-			label.innerText = `${hours} Hours (~${days} Day${days !== '1' ? 's' : ''})`;
-		}
-	}
-
-	async function grantAccess() {
-		const name = document.getElementById('guestName').value.trim();
-		const phone = document.getElementById('phone').value.trim();
-		const hours = document.getElementById('duration').value;
-		const btn = document.getElementById('grantBtn');
-		const status = document.getElementById('status');
-
-		if (!phone) {
-			status.className = 'error';
-			status.innerText = 'Please enter a valid phone number.';
-			return;
-		}
-
-		btn.disabled = true;
-		status.className = 'busy';
-		status.innerText = 'Creating user & sending SMS...';
-
-		try {
-			const response = await fetch('/api/grant_access', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Accept': 'application/json'
-				},
-				body: JSON.stringify({
-					name: name,
-					phone: phone,
-					duration_hours: parseInt(hours, 10)
-				})
-			});
-
-			let data = {};
-			try { data = await response.json(); } catch(e) {}
-
-			if (response.ok && data.status === 'ok') {
-				status.className = 'success';
-				status.innerHTML = `Access granted for ${data.phone} (${data.expires_in})!<br>SMS dispatched.`;
-				document.getElementById('phone').value = '';
-				document.getElementById('guestName').value = '';
-			} else {
-				status.className = 'error';
-				status.innerText = data.error || `Error (${response.status})`;
-			}
-		} catch (err) {
-			status.className = 'error';
-			status.innerText = 'Network error';
-		} finally {
-			btn.disabled = false;
-		}
-	}
-	</script>
 </body>
 </html>
