@@ -18,6 +18,9 @@
 
 		.toolbar {
 			margin-bottom: 15px;
+			display: flex;
+			align-items: center;
+			gap: 12px;
 		}
 
 		input[type="text"] {
@@ -26,10 +29,25 @@
 			width: 250px;
 		}
 
+		label {
+			font-size: 13px;
+			cursor: pointer;
+			user-select: none;
+			display: flex;
+			align-items: center;
+			gap: 5px;
+		}
+
 		button {
 			padding: 5px 10px;
 			font-size: 14px;
 			cursor: pointer;
+		}
+
+		.auto-refresh-status {
+			font-size: 12px;
+			color: #666;
+			margin-left: auto;
 		}
 
 		table {
@@ -53,22 +71,27 @@
 </head>
 <body>
 
-	<h1>Activity Logs</h1>
+	<h1>Activity & Auth Logs</h1>
 
 	<div class="toolbar">
-		<input type="text" id="searchInput" placeholder="Search user, rfid, action, source...">
+		<input type="text" id="searchInput" placeholder="Search phone, user, rfid, ip..." onkeyup="if(event.key==='Enter') fetchLogs()">
+		<label>
+			<input type="checkbox" id="hideUnverifiedCheckbox" checked onchange="fetchLogs()">
+			Hide failed/unverified login attempts
+		</label>
 		<button onclick="fetchLogs()">Search</button>
 		<button onclick="fetchLogs()">Refresh</button>
+		<span class="auto-refresh-status" id="refreshStatus">Auto-refresh: 60s</span>
 	</div>
 
 	<table>
 		<thead>
 			<tr>
 				<th>Timestamp</th>
-				<th>User</th>
+				<th>User / Phone</th>
 				<th>RFID</th>
-				<th>Action</th>
-				<th>Source</th>
+				<th>Action / State</th>
+				<th>Source / Host</th>
 			</tr>
 		</thead>
 		<tbody id="logTableBody">
@@ -79,16 +102,25 @@
 	</table>
 
 	<script>
+		var autoRefreshInterval = null;
+		var countdown = 60;
+
 		function fetchLogs() {
-			var query = encodeURIComponent(document.getElementById('searchInput').value.trim());
+			var query = document.getElementById('searchInput').value.trim();
+			var hideUnverified = document.getElementById('hideUnverifiedCheckbox').checked ? 1 : 0;
 			var tbody = document.getElementById('logTableBody');
 
-			fetch('/api/log?q=' + query)
+			// Construct API URL
+			var url = '/api/log?q=' + encodeURIComponent(query) + '&hide_unverified=' + hideUnverified;
+
+			fetch(url)
 				.then(function(res) {
 					if (!res.ok) throw new Error('Error loading logs');
 					return res.json();
 				})
 				.then(function(result) {
+					resetTimer();
+
 					if (!result.data || result.data.length === 0) {
 						tbody.innerHTML = '<tr><td colspan="5">No logs found.</td></tr>';
 						return;
@@ -113,11 +145,34 @@
 				});
 		}
 
+		function resetTimer() {
+			countdown = 60;
+			updateTimerDisplay();
+		}
+
+		function updateTimerDisplay() {
+			var statusEl = document.getElementById('refreshStatus');
+			if (statusEl) {
+				statusEl.textContent = 'Auto-refresh: ' + countdown + 's';
+			}
+		}
+
 		function escapeHtml(str) {
 			return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 		}
 
+		// Initial load
 		fetchLogs();
+
+		// Auto-refresh countdown interval (triggers fetch every 60s)
+		setInterval(function() {
+			countdown--;
+			if (countdown <= 0) {
+				fetchLogs();
+			} else {
+				updateTimerDisplay();
+			}
+		}, 1000);
 	</script>
 
 </body>
