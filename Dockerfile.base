@@ -8,6 +8,7 @@ RUN echo "deb [check-valid-until=no] http://archive.debian.org/debian/ buster ma
 
 # Install all common system dependencies and build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
+	tzdata \
 	build-essential \
 	wget \
 	libssl-dev \

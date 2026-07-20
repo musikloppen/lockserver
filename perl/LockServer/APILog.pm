@@ -29,6 +29,9 @@ sub handler {
 		return Apache2::Const::OK;
 	}
 
+	# Force MariaDB session timezone to match system timezone (TZ=Europe/Copenhagen)
+	$dbh->do("SET time_zone = 'SYSTEM'");
+
 	# 3. Dynamic Query Execution
 	my $where = "1=1";
 	my @binds;
@@ -38,7 +41,8 @@ sub handler {
 		push @binds, ("%$search%", "%$search%", "%$search%", "%$search%");
 	}
 
-	my $sql = "SELECT id, time_stamp, user, rfid, action, source 
+	# Explicitly format the timestamp to 'YYYY-MM-DD HH:MM:SS'
+	my $sql = "SELECT id, DATE_FORMAT(time_stamp, '%Y-%m-%d %H:%i:%s') AS time_stamp, user, rfid, action, source 
 	           FROM log 
 	           WHERE $where 
 	           ORDER BY time_stamp DESC, id DESC 
