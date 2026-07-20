@@ -20,8 +20,8 @@ sub handler {
 	# Cap limit to prevent memory bloat on low-spec hardware (e.g., Raspberry Pi)
 	$limit = 100 if $limit > 100;
 
-	# 2. Database Connection
-	my $dbh = LockServer::Db::get_db_connection();
+	# 2. Database Connection via my_connect()
+	my $dbh = LockServer::Db::my_connect();
 	unless ($dbh) {
 		$r->status(Apache2::Const::HTTP_INTERNAL_SERVER_ERROR);
 		$r->content_type('application/json');
