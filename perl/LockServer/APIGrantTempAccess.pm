@@ -145,7 +145,11 @@ sub handler {
 	}
 
 	# 6. Send SMS Notification (Roll back DB user creation if sending fails)
-	my $base_url = "https://" . ($r->hostname || 'localhost');
+	my $base_url = $ENV{BASE_URL} || ($r ? $r->hostname : undef) || 'localhost';
+
+	# Ensure scheme is present
+	$base_url = "https://$base_url" unless $base_url =~ m{^https?://}i;
+
 	my $sms_text = "You have been granted door access for $hours hour(s) by $created_by. Log in here: $base_url";
 
 	my $sms_ok = send_notification($r, $phone, $sms_text);

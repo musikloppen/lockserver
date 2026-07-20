@@ -194,7 +194,7 @@ services:
     extra_hosts:
       - "postfix:10.8.0.66"
     environment:
-      - DEBUG=${DEBUG}
+      - BASE_URL=${BASE_URL}
       - REDIS_HOST=lock-redis
       - NOTIFICATION_SMS_CODE_MESSAGE=${NOTIFICATION_SMS_CODE_MESSAGE}
       - SMTP_HOST=${SMTP_HOST}
@@ -202,6 +202,7 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_USE_TLS=${SMTP_USE_TLS}
+      - DEBUG=${DEBUG}
     networks:
       - lock_network
     logging:
