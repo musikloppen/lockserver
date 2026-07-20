@@ -79,6 +79,7 @@ services:
     depends_on:
       - redis
       - db
+      - setup_config
     volumes:
       - ./db/conf.d/99-client.cnf:/etc/mysql/my.cnf:ro
     environment:
@@ -111,6 +112,7 @@ services:
       - redis
       - unlock_server
       - db
+      - setup_config
     volumes:
       - ./db/conf.d/99-client.cnf:/etc/mysql/my.cnf:ro
     environment:
@@ -140,6 +142,7 @@ services:
       - redis
       - unlock_server
       - db
+      - setup_config
     volumes:
       - ./db/conf.d/99-client.cnf:/etc/mysql/my.cnf:ro
     environment:
@@ -174,6 +177,7 @@ services:
       - redis
       - unlock_server
       - db
+      - setup_config
     volumes:
       - ./db/conf.d/99-client.cnf:/etc/mysql/my.cnf:ro
     extra_hosts:
