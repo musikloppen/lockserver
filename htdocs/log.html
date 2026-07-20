@@ -49,16 +49,6 @@
 		th {
 			background: #eee;
 		}
-
-		.status-ok {
-			color: green;
-			font-weight: bold;
-		}
-
-		.status-error {
-			color: red;
-			font-weight: bold;
-		}
 	</style>
 </head>
 <body>
@@ -66,7 +56,7 @@
 	<h1>Activity Logs</h1>
 
 	<div class="toolbar">
-		<input type="text" id="searchInput" placeholder="Search logs...">
+		<input type="text" id="searchInput" placeholder="Search user, rfid, action, source...">
 		<button onclick="fetchLogs()">Search</button>
 		<button onclick="fetchLogs()">Refresh</button>
 	</div>
@@ -76,9 +66,9 @@
 			<tr>
 				<th>Timestamp</th>
 				<th>User</th>
-				<th>Event</th>
-				<th>Status</th>
-				<th>Message</th>
+				<th>RFID</th>
+				<th>Action</th>
+				<th>Source</th>
 			</tr>
 		</thead>
 		<tbody id="logTableBody">
@@ -107,15 +97,13 @@
 					var html = '';
 					for (var i = 0; i < result.data.length; i++) {
 						var row = result.data[i];
-						var isOk = (row.status === 'ok' || row.status === 'success');
-						var statusClass = isOk ? 'status-ok' : 'status-error';
 
 						html += '<tr>' +
-							'<td>' + row.timestamp + '</td>' +
+							'<td>' + escapeHtml(row.time_stamp || '') + '</td>' +
 							'<td>' + escapeHtml(row.user || '-') + '</td>' +
-							'<td>' + escapeHtml(row.event_type || '-') + '</td>' +
-							'<td class="' + statusClass + '">' + escapeHtml(row.status || '-') + '</td>' +
-							'<td>' + escapeHtml(row.message || '') + '</td>' +
+							'<td>' + escapeHtml(row.rfid || '-') + '</td>' +
+							'<td>' + escapeHtml(row.action || '-') + '</td>' +
+							'<td>' + escapeHtml(row.source || '-') + '</td>' +
 							'</tr>';
 					}
 					tbody.innerHTML = html;

@@ -17,10 +17,10 @@ sub handler {
 	my $offset = int($args{offset} || 0);
 	my $search = $args{q} // '';
 
-	# Cap limit to prevent memory bloat on low-spec hardware (e.g., Raspberry Pi)
+	# Cap limit to prevent memory bloat
 	$limit = 100 if $limit > 100;
 
-	# 2. Database Connection via my_connect()
+	# 2. Database Connection
 	my $dbh = LockServer::Db::my_connect();
 	unless ($dbh) {
 		$r->status(Apache2::Const::HTTP_INTERNAL_SERVER_ERROR);
@@ -34,20 +34,27 @@ sub handler {
 	my @binds;
 
 	if ($search ne '') {
-		$where .= " AND (user LIKE ? OR event_type LIKE ? OR message LIKE ?)";
-		push @binds, ("%$search%", "%$search%", "%$search%");
+		$where .= " AND (user LIKE ? OR rfid LIKE ? OR action LIKE ? OR source LIKE ?)";
+		push @binds, ("%$search%", "%$search%", "%$search%", "%$search%");
 	}
 
-	my $sql = "SELECT id, timestamp, user, event_type, status, message 
+	my $sql = "SELECT id, time_stamp, user, rfid, action, source 
 	           FROM log 
 	           WHERE $where 
-	           ORDER BY timestamp DESC 
+	           ORDER BY time_stamp DESC, id DESC 
 	           LIMIT ? OFFSET ?";
 	push @binds, $limit, $offset;
 
 	my $sth = $dbh->prepare($sql);
-	$sth->execute(@binds);
-	my $logs = $sth->fetchall_arrayref({});
+	unless ($sth && $sth->execute(@binds)) {
+		warn "APILog DB query failed: " . ($dbh->errstr || 'Unknown error');
+		$r->status(Apache2::Const::HTTP_INTERNAL_SERVER_ERROR);
+		$r->content_type('application/json');
+		$r->print(encode_json({ error => 'Failed to execute query' }));
+		return Apache2::Const::OK;
+	}
+
+	my $logs = $sth->fetchall_arrayref({}) || [];
 
 	# 4. JSON Output
 	$r->content_type('application/json');
