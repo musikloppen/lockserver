@@ -87,17 +87,20 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Invalid payload. "phone" and "duration_hours" required.' });
 	}
 
-	# 4. Normalize phone number
-	my $phone = $req_data->{phone};
-	$phone =~ s/[\s\-]//g;
-	$phone = '+45' . $phone unless $phone =~ /^\+/;
+	# 4. Normalize and validate phone number
+	my $phone_obj = LockServer::Number::Phone->new($req_data->{phone});
+	unless ($phone_obj && $phone_obj->is_valid) {
+		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Invalid phone number format' });
+	}
+
+	my $phone = $phone_obj->international; # Normalized format (e.g. 004512345678)
 
 	my $hours = int($req_data->{duration_hours});
 	if ($hours < 1 || $hours > 168) {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Duration must be between 1 and 168 hours' });
 	}
 
-	# --- Check if normalized phone number already has active/unexpired access ---
+	# --- Check if phone number already has active/unexpired access ---
 	my $sth_check = $dbh->prepare(qq[
 		SELECT username FROM users
 		WHERE phone = ?
@@ -113,12 +116,13 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Phone number already has active access' });
 	}
 
-	# 5. Generate human-readable username & write to MySQL
+	# 5. Generate human-readable username
 	my $unique_username = generate_guest_username();
 	my $guest_name      = $req_data->{name} || $unique_username;
 	my $comment         = "Guest access created by $created_by";
 
-	$dbh->{AutoCommit} = 1;
+	# --- Start DB Transaction ---
+	$dbh->{AutoCommit} = 0;
 
 	my $sth_ins = $dbh->prepare(qq[
 		INSERT INTO users (
@@ -130,27 +134,40 @@ sub handler {
 		)
 	]);
 
-	my $insert_ok = $sth_ins->execute($unique_username, $guest_name, $phone, $hours, $comment, $created_by);
+	my $insert_ok = eval { $sth_ins->execute($unique_username, $guest_name, $phone, $hours, $comment, $created_by) };
 	$sth_ins->finish();
 
 	unless ($insert_ok) {
+		$dbh->rollback();
+		$dbh->{AutoCommit} = 1;
 		$r->log_error("[APIGrantTempAccess] INSERT failed: " . ($dbh->errstr || 'unknown error'));
 		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Failed to write to database' });
 	}
 
-	# 6. Send SMS Notification
+	# 6. Send SMS Notification (Roll back DB user creation if sending fails)
 	my $base_url = "https://" . ($r->hostname || 'localhost');
 	my $sms_text = "You have been granted door access for $hours hour(s) by $created_by. Log in here: $base_url";
 
 	my $sms_ok = send_notification($r, $phone, $sms_text);
 
+	unless ($sms_ok) {
+		$dbh->rollback();
+		$dbh->{AutoCommit} = 1;
+		$r->log_error("[APIGrantTempAccess] Rolled back user '$unique_username' creation because SMS dispatch failed for $phone");
+		return send_json($r, Apache2::Const::HTTP_INTERNAL_SERVER_ERROR, { error => 'Failed to send notification SMS. Access was not granted.' });
+	}
+
+	# Commit transaction upon confirmed SMS dispatch
+	$dbh->commit();
+	$dbh->{AutoCommit} = 1;
+
 	return send_json($r, 200, {
 		status     => 'ok',
-		message    => $sms_ok ? 'Guest access created and SMS dispatched' : 'Guest access created (SMS delivery failed)',
+		message    => 'Guest access created and SMS dispatched',
 		username   => $unique_username,
 		phone      => $phone,
 		expires_in => "$hours hour(s)",
-		sms_sent   => $sms_ok ? 1 : 0
+		sms_sent   => 1
 	});
 }
 
