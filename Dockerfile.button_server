@@ -1,4 +1,4 @@
-FROM perl-base:1.0
+FROM perl-base:latest
 
 # Download and compile bcm2835 library
 RUN wget http://www.airspayce.com/mikem/bcm2835/bcm2835-1.71.tar.gz && \

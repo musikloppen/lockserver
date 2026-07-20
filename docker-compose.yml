@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile.base
-    image: perl-base:1.0
+    image: perl-base:latest
     entrypoint: ["echo", "Base image build complete."]
 
   setup_config:

@@ -1,4 +1,4 @@
-FROM perl-base:1.0
+FROM perl-base:latest
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	libdevice-serialport-perl \
