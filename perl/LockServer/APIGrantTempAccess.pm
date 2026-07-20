@@ -97,6 +97,22 @@ sub handler {
 		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Duration must be between 1 and 168 hours' });
 	}
 
+	# --- Check if normalized phone number already has active/unexpired access ---
+	my $sth_check = $dbh->prepare(qq[
+		SELECT username FROM users
+		WHERE phone = ?
+			AND active = 1
+			AND (expire_at IS NULL OR expire_at > NOW())
+		LIMIT 1
+	]);
+	$sth_check->execute($phone);
+	my ($existing_user) = $sth_check->fetchrow();
+	$sth_check->finish();
+
+	if ($existing_user) {
+		return send_json($r, Apache2::Const::HTTP_BAD_REQUEST, { error => 'Phone number already has active access' });
+	}
+
 	# 5. Generate human-readable username & write to MySQL
 	my $unique_username = generate_guest_username();
 	my $guest_name      = $req_data->{name} || $unique_username;
