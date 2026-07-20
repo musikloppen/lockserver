@@ -9,31 +9,53 @@ Optimized to run inside Docker on resource-constrained hardware such as a **Rasp
 ## 🏗 System Architecture
 
 ```
-                       +-------------------+
-                       |    Web Browser    |
-                       +---------+---------+
-                                 | HTTP / REST API
-                                 v
-                       +-------------------+
-                       |   Apache mod_perl |
-                       |   (lock_web)      |
-                       +----+---------+----+
-                            |         |
-                  Database  |         | Hardware Events
-               (Users / SMS)|         | (Redis Pub/Sub)
-                            v         v
-                       +-------+   +-------+
-                       | MySQL |   | Redis |
-                       +-------+   +---+---+
-                                       |
-                                       v
-                             +-------------------+
-                             |  Unlock Controller|
-                             | (Hardware Relay)  |
-                             +-------------------+
+                                  [ USER INPUTS ]
+
+   Web Browser              Physical Exit Button             RFID Badge Reader
+        |                            |                              |
+        | HTTP / REST                | GPIO / Hardware Event        | Serial / RFID Event
+        v                            v                              v
++---------------+            +---------------+              +---------------+
+|   lock_web    |            | lock_button   |              |   lock_rfid   |
+| (mod_perl)    |            |   _server     |              |    _server    |
++---+-------+---+            +-------+-------+              +-------+-------+
+    |       |                        |                              |
+    |       | Requests Unlock        | Publishes Event              | Publishes Event
+    |       +------------------------+------------------------------+
+    |                                |
+    | Authenticate                   v
+    v                         +--------------+
++-------+                     |  lock_redis  |
+|lock_db|                     | (Pub/Sub)    |
++-------+                     +------+-------+
+                                     |
+                                     | Event Notification
+                                     v
+                              +--------------+
+                              | lock_unlock  |
+                              |   _server    |
+                              +------+-------+
+                                     |
+                                     | Drives Relay
+                                     v
+                            [ PHYSICAL DOOR LOCK ]
 ```
 
-### Key Features
+### Docker Services Breakdown
+
+| Service Name | Dockerfile | Description |
+| :--- | :--- | :--- |
+| **`lock_web`** | `Dockerfile.web` | Apache + mod_perl server handling the REST API, web UI, and SMS authentication. |
+| **`lock_button_server`** | `Dockerfile.button_server` | Daemon listening for physical exit button presses and dispatching unlock events. |
+| **`lock_rfid_server`** | `Dockerfile.rfid_server` | Daemon reading RFID card/badge scans and validating access. |
+| **`lock_unlock_server`** | `Dockerfile.unlock_server` | Hardware controller daemon listening to Redis channels and driving physical door lock relays. |
+| **`lock_redis`** | `Dockerfile.redis` | In-memory message broker managing event pub/sub and millisecond hardware mutex locks. |
+| **`lock_db`** | `Dockerfile.db` | MariaDB/MySQL database for user accounts, logs, lock hardware metadata, and temporary passes. |
+
+---
+
+## Key Features
+* **Multi-Input Unlock Triggers**: Open door via Web API (`lock_web`), physical exit button (`lock_button_server`), or RFID badge scanner (`lock_rfid_server`).
 * **SMS-Based Authentication**: Secure phone number verification without persistent password management.
 * **Temporary Guest Access**: Logarithmic duration slider allowing user creation for 1 hour up to 1 week with automated expiration.
 * **Strict Hardware Mutex Locking**: Prevents race conditions and duplicate physical relay activations using millisecond-precision Redis locks (`PX` TTL based on `open_time + 200ms`).
@@ -179,6 +201,7 @@ docker exec -it lock_web ps aux | grep apache2
 ## 📂 Directory Structure
 
 ```text
+.
 ├── 000-default.conf             # Apache VirtualHost configuration
 ├── Dockerfile.base              # Shared base Docker image for Perl services
 ├── Dockerfile.web               # Apache + mod_perl web server container
@@ -196,11 +219,11 @@ docker exec -it lock_web ps aux | grep apache2
 │       └── 99-client.cnf
 ├── htdocs/                      # Web frontend static assets & dashboard views
 │   └── private/                 # Authenticated views (SMS login & verification)
-└── perl/                        # Perl codebase
+└── perl/                        # Perl codebase & background daemons
     ├── startup.pl               # mod_perl initialization script
-    ├── unlock_server.pl         # Service: Listens on Redis channel & drives lock hardware
-    ├── button_server.pl         # Service: Handles physical exit button presses
-    ├── rfid_server.pl           # Service: RFID badge scanner handler
+    ├── unlock_server.pl         # Listener service: Subscribes to Redis & drives relay hardware
+    ├── button_server.pl         # Trigger daemon: Detects physical button presses to request unlock
+    ├── rfid_server.pl           # Trigger daemon: Reads RFID badges & dispatches unlock events
     └── LockServer/              # Core Perl application modules
         ├── APIUnlock.pm          # POST /api/unlock & Redis hardware mutex lock
         ├── APIGrantTempAccess.pm # POST /api/grant_access & temporary pass creation
