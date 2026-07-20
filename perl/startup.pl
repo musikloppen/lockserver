@@ -25,5 +25,6 @@ use LockServer::Db;
 use LockServer::SMSAuth;
 use LockServer::APIUnlock;
 use LockServer::APIGrantTempAccess;
+use LockServer::APILog;
 
 1;
