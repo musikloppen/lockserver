@@ -46,7 +46,7 @@ services:
       MARIADB_PASSWORD: ${DB_PASS}
       TZ: Europe/Copenhagen
     volumes:
-      - ./db:/var/lib/mysql
+      - ./db/data:/var/lib/mysql
     healthcheck:
       test: ["CMD", "sh", "-c", "mysql -u root -p\"$$MARIADB_ROOT_PASSWORD\" -e \"SELECT 1;\""]
       interval: 15s
