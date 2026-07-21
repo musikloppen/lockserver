@@ -52,10 +52,6 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
-    networks:
-      lock_network:
-        aliases:
-          - lock-db
     logging:
       driver: "syslog"
       options:
@@ -68,10 +64,6 @@ services:
     container_name: lock_redis
     hostname: lock-redis
     restart: always
-    networks:
-      lock_network:
-        aliases:
-          - lock-redis
     logging:
       driver: "syslog"
       options:
@@ -104,8 +96,6 @@ services:
       - "/dev/gpiomem:/dev/gpiomem"
       - "/dev/mem:/dev/mem"
     privileged: true
-    networks:
-      - lock_network
     logging:
       driver: "syslog"
       options:
@@ -136,8 +126,6 @@ services:
       - DB_PASS=${DB_PASS}
       - TZ=Europe/Copenhagen
     privileged: true
-    networks:
-      - lock_network
     logging:
       driver: "syslog"
       options:
@@ -171,8 +159,6 @@ services:
       - "/dev/gpiomem:/dev/gpiomem"
       - "/dev/mem:/dev/mem"
     privileged: true
-    networks:
-      - lock_network
     logging:
       driver: "syslog"
       options:
@@ -211,8 +197,6 @@ services:
       - SMTP_USE_TLS=${SMTP_USE_TLS}
       - DEBUG=${DEBUG}
       - TZ=Europe/Copenhagen
-    networks:
-      - lock_network
     logging:
       driver: "syslog"
       options:
@@ -238,8 +222,6 @@ services:
     restart: always
     environment:
       - TZ=Europe/Copenhagen
-    networks:
-      - lock_network
     logging:
       driver: "syslog"
       options:
@@ -266,13 +248,7 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - TZ=Europe/Copenhagen
-    networks:
-      - lock_network
     logging:
       driver: "syslog"
       options:
         tag: "docker/cron"
-
-networks:
-  lock_network:
-    driver: bridge
