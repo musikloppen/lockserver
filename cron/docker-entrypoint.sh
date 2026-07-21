@@ -1,8 +1,25 @@
 #!/bin/bash
-set -e
 
-# Export environment variables for cron jobs to use
-env | grep -E '^(DB_|REDIS_|TZ|PERL5LIB)' > /etc/cron_env
+# Export environment variables for cron jobs to source
+echo "export DB_HOST=${DB_HOST}" > /etc/cron_env
+echo "export DB_PORT=${DB_PORT}" >> /etc/cron_env
+echo "export DB_NAME=${DB_NAME}" >> /etc/cron_env
+echo "export DB_USER=${DB_USER}" >> /etc/cron_env
+echo "export DB_PASS=${DB_PASS}" >> /etc/cron_env
+echo "export REDIS_HOST=${REDIS_HOST}" >> /etc/cron_env
+echo "export REDIS_PORT=${REDIS_PORT}" >> /etc/cron_env
+echo "export TZ=${TZ}" >> /etc/cron_env
+echo "export PERL5LIB=/usr/local/lib/perl" >> /etc/cron_env
+echo "export DEBUG=${DEBUG}" >> /etc/cron_env
 
-# Start cron daemon in foreground
-exec cron -f
+# Start cron in background
+cron -f &
+cron_pid=$!
+
+# Tail the cron log to stdout for Docker logging
+tail -f /var/log/cron.log &
+tail_cron_pid=$!
+
+# Wait for background processes; kill remainder if one stops
+wait -n
+kill $(jobs -p)
