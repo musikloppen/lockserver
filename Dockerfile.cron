@@ -1,0 +1,24 @@
+FROM perl-base:latest
+
+LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
+
+USER root
+
+# Install cron runtime
+RUN apt-get update && apt-get install -y --no-install-recommends cron && rm -rf /var/lib/apt/lists/*
+
+COPY ./perl /usr/local/lib/perl
+COPY ./cron/crontab /etc/crontab
+COPY ./cron/clean_sms_auth.pl /usr/local/bin/clean_sms_auth.pl
+COPY ./cron/docker-entrypoint.sh /docker-entrypoint.sh
+
+RUN chmod 0644 /etc/crontab && \
+    chmod +x /usr/local/bin/clean_sms_auth.pl /docker-entrypoint.sh && \
+    touch /var/log/cron.log
+
+ENV PERL5LIB=/usr/local/lib/perl
+
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+
+ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
