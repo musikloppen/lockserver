@@ -19,10 +19,12 @@ COPY ./htdocs /var/www/lock_server
 COPY ./web/000-default.conf /etc/apache2/sites-available/
 COPY ./web/mpm_prefork.conf /etc/apache2/mods-available/mpm_prefork.conf
 COPY ./perl /etc/apache2/perl
+COPY ./web/docker-entrypoint.sh /docker-entrypoint.sh
 
-RUN ln -sf /dev/stdout /var/log/apache2/access.log \
-	&& ln -sf /dev/stderr /var/log/apache2/error.log
+RUN chmod +x /docker-entrypoint.sh && \
+	ln -sf /dev/stdout /var/log/apache2/access.log && \
+	ln -sf /dev/stderr /var/log/apache2/error.log
 
 ENV PERL5LIB=/etc/apache2/perl:/usr/local/share/perl5
 
-ENTRYPOINT ["/bin/sh", "-c", ". /etc/apache2/envvars && exec apache2 -D FOREGROUND"]
+ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
