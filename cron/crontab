@@ -3,4 +3,4 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 PERL5LIB=/usr/local/lib/perl
 
 # Run DB cleanup task every 5 minutes
-*/5 * * * * root . /etc/cron_env; /usr/local/bin/clean_sms_auth.pl >> /var/log/cron.log 2>&1
+*/5 * * * * root . /etc/cron_env; /usr/local/bin/clean_logs.pl >> /var/log/cron.log 2>&1
