@@ -1,34 +1,49 @@
 FROM perl-base:latest
 
-# 1. Install Nginx, explicit Lua and NDK module packages, and build tools
+# 1. Install Nginx, explicit Lua and NDK module packages, build tools, and Lua 5.1 headers
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	nginx-extras \
 	libnginx-mod-http-ndk \
 	libnginx-mod-http-lua \
-	luarocks \
+	lua5.1 \
+	liblua5.1-0-dev \
 	git \
 	build-essential \
 	libssl-dev \
+	wget \
+	unzip \
+	ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
-# 2. Clear default symlinks so nginx.conf manages load order explicitly
+# 2. Build and install modern LuaRocks from source targeting Lua 5.1
+RUN cd /tmp \
+	&& wget https://luarocks.org/releases/luarocks-3.13.0.tar.gz \
+	&& tar zxpf luarocks-3.13.0.tar.gz \
+	&& cd luarocks-3.13.0 \
+	&& ./configure --with-lua-include=/usr/include/lua5.1 \
+	&& make \
+	&& make install \
+	&& cd / \
+	&& rm -rf /tmp/luarocks*
+
+# 3. Clear default symlinks so nginx.conf manages load order explicitly
 RUN rm -rf /etc/nginx/modules-enabled/*
 
-# 3. Install required Lua libraries via Luarocks
+# 4. Install required Lua libraries via upgraded Luarocks
 RUN luarocks install lua-resty-http
 RUN luarocks install lua-resty-dns
 RUN luarocks install luafilesystem
 
-# 4. Create compatibility symlink for scripts targeting openresty
+# 5. Create compatibility symlink for scripts targeting openresty
 RUN ln -s /usr/sbin/nginx /usr/local/bin/openresty || true
 
-# 5. Copy configuration and Lua scripts
+# 6. Copy configuration and Lua scripts
 COPY openresty/nginx.conf /etc/nginx/nginx.conf
 COPY openresty/lua/access_control.lua /usr/local/openresty/lualib/access_control.lua
 COPY openresty/lua/rate_limit.lua /usr/local/openresty/lualib/rate_limit.lua
 COPY openresty/lua/dnsbl_check.lua /usr/local/openresty/lualib/dnsbl_check.lua
 
-# 6. Create directories and copy error page templates
+# 7. Create directories and copy error page templates
 RUN mkdir -p /usr/local/openresty/html /usr/local/openresty/lualib/dnsbl_whitelist
 COPY htdocs/backend_down.html /usr/local/openresty/html/backend_down.html
 COPY htdocs/blocked_ip.html /usr/local/openresty/html/blocked_ip.html
