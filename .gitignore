@@ -1,5 +1,5 @@
 .env
-/db
+/db/data
 docker-compose.override.yml
 .DS_Store
 *.sql
