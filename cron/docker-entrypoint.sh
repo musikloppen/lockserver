@@ -9,7 +9,7 @@ echo "export DB_PASS=${DB_PASS}" >> /etc/cron_env
 echo "export REDIS_HOST=${REDIS_HOST}" >> /etc/cron_env
 echo "export REDIS_PORT=${REDIS_PORT}" >> /etc/cron_env
 echo "export TZ=${TZ}" >> /etc/cron_env
-echo "export PERL5LIB=/usr/local/lib/perl" >> /etc/cron_env
+echo "export PERL5LIB=/usr/local/share/perl5" >> /etc/cron_env
 echo "export DEBUG=${DEBUG}" >> /etc/cron_env
 
 # Start cron in background
