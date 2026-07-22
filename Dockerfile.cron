@@ -13,12 +13,9 @@ COPY ./cron/clean_logs.pl /usr/local/bin/clean_logs.pl
 COPY ./cron/docker-entrypoint.sh /docker-entrypoint.sh
 
 RUN chmod 0644 /etc/crontab && \
-    chmod +x /usr/local/bin/clean_logs.pl /docker-entrypoint.sh && \
-    touch /var/log/cron.log
+	chmod +x /usr/local/bin/clean_logs.pl /docker-entrypoint.sh && \
+	touch /var/log/cron.log
 
 ENV PERL5LIB=/usr/local/lib/perl
-
-ARG GIT_COMMIT=unknown
-ENV GIT_COMMIT=${GIT_COMMIT}
 
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
