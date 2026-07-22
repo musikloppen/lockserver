@@ -368,7 +368,7 @@ sub ls_unlock {
 	if (!$DEBUG) {
 		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_13, 1);
 		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_26, 1);
-		`echo 0 >/sys/class/leds/ath9k_htc-phy0/brightness ; echo 1 >/sys/class/leds/ath9k_htc-phy0/brightness`;
+#		`echo 0 >/sys/class/leds/ath9k_htc-phy0/brightness ; echo 1 >/sys/class/leds/ath9k_htc-phy0/brightness`;
 	} else {
 		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY UNLOCKED");
 	}
@@ -378,7 +378,7 @@ sub ls_lock {
 	if (!$DEBUG) {
 		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_13, 0);
 		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_26, 0);
-		`echo "phy0tpt"> /sys/class/leds/ath9k_htc-phy0/trigger`;
+#		`echo "phy0tpt"> /sys/class/leds/ath9k_htc-phy0/trigger`;
 	} else {
 		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY LOCKED");
 	}
