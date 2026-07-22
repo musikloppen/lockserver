@@ -9,7 +9,7 @@ services:
     entrypoint: ["echo", "Base image build complete."]
 
   setup_config:
-    image: busybox
+    image: perl-base:latest
     container_name: setup_config
     volumes:
       - ./db/conf.d:/out
