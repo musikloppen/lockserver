@@ -49,10 +49,9 @@ services:
       - ./db/data:/var/lib/mysql
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MARIADB_ROOT_PASSWORD\" || exit 1"]
-      interval: 10s
-      timeout: 5s
+      interval: 15s
+      timeout: 10s
       retries: 5
-      start_period: 30s
     logging:
       driver: "syslog"
       options:
