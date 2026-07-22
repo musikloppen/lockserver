@@ -15,7 +15,6 @@ echo "export SMTP_HOST=\"${SMTP_HOST}\"" >> /etc/apache2/envvars
 echo "export SMTP_PORT=\"${SMTP_PORT}\"" >> /etc/apache2/envvars
 echo "export SMTP_USER=\"${SMTP_USER}\"" >> /etc/apache2/envvars
 echo "export SMTP_PASSWORD=\"${SMTP_PASSWORD}\"" >> /etc/apache2/envvars
-echo "export SMTP_USE_TLS=\"${SMTP_USE_TLS}\"" >> /etc/apache2/envvars
 echo "export DEBUG=\"${DEBUG}\"" >> /etc/apache2/envvars
 echo "export TZ=\"${TZ}\"" >> /etc/apache2/envvars
 

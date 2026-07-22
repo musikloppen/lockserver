@@ -90,7 +90,6 @@ SMTP_HOST=smtp.example.com
 SMTP_PORT=587
 SMTP_USER=meterlogger
 SMTP_PASSWORD=secret
-SMTP_USE_TLS=1
 
 # Debug / Development
 DEBUG=0

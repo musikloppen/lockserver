@@ -100,7 +100,7 @@ sub send_notification {
 			body => '',
 		);
 
-		# Standard SMTPS (Port 465) uses SSL upfront, STARTTLS (Port 587/25) upgrades after handshake
+		# Standard SMTPS (Port 465) uses SSL upfront; otherwise plaintext over internal network
 		my %smtp_opts = (
 			Port    => $smtp_port,
 			Timeout => 10,
@@ -113,18 +113,6 @@ sub send_notification {
 		unless ($smtp) {
 			log_warn("Cannot connect to SMTP server at $smtp_host:$smtp_port", { -request => $r });
 			return 0;
-		}
-
-		# Initiate STARTTLS if explicitly requested or standard submission port 587
-		my $use_tls = $ENV{SMTP_USE_TLS} || ($r ? $r->subprocess_env('SMTP_USE_TLS') : undef);
-		if ($use_tls || $smtp_port == 587) {
-			$smtp->starttls();
-			# 220 / 200 series means success in SMTP protocol
-			unless ($smtp->code() == 220 || $smtp->code() == 200) {
-				log_warn("SMTP STARTTLS failed (" . $smtp->code() . "): " . $smtp->message(), { -request => $r });
-				$smtp->quit();
-				return 0;
-			}
 		}
 
 		# Authenticate if credentials are provided in environment
