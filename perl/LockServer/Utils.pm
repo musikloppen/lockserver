@@ -118,8 +118,10 @@ sub send_notification {
 		# Initiate STARTTLS if explicitly requested or standard submission port 587
 		my $use_tls = $ENV{SMTP_USE_TLS} || ($r ? $r->subprocess_env('SMTP_USE_TLS') : undef);
 		if ($use_tls || $smtp_port == 587) {
-			unless ($smtp->starttls()) {
-				log_warn("SMTP STARTTLS failed: " . $smtp->message(), { -request => $r });
+			$smtp->starttls();
+			# 220 / 200 series means success in SMTP protocol
+			unless ($smtp->code() == 220 || $smtp->code() == 200) {
+				log_warn("SMTP STARTTLS failed (" . $smtp->code() . "): " . $smtp->message(), { -request => $r });
 				$smtp->quit();
 				return 0;
 			}
