@@ -4,7 +4,7 @@ use strict;
 use warnings;
 
 # Inject internal framework search arrays into the global include hierarchy
-use lib qw( /etc/apache2/perl /usr/local/share/perl5 );
+use lib qw( /usr/local/share/perl5 );
 
 # Core Apache2 internal communication APIs
 use Apache2::RequestRec ();

@@ -7,7 +7,6 @@ USER root
 # Install cron runtime
 RUN apt-get update && apt-get install -y --no-install-recommends cron && rm -rf /var/lib/apt/lists/*
 
-COPY ./perl /usr/local/lib/perl
 COPY ./cron/crontab /etc/crontab
 COPY ./cron/clean_logs.pl /usr/local/bin/clean_logs.pl
 COPY ./cron/docker-entrypoint.sh /docker-entrypoint.sh
