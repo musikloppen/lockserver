@@ -48,10 +48,11 @@ services:
     volumes:
       - ./db/data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "sh", "-c", "mysql -u root -p\"$$MARIADB_ROOT_PASSWORD\" -e \"SELECT 1;\""]
-      interval: 15s
-      timeout: 10s
-      retries: 10
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MARIADB_ROOT_PASSWORD\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     logging:
       driver: "syslog"
       options:

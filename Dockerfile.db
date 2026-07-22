@@ -16,20 +16,25 @@ RUN mkdir -p /var/lib/mysql /var/run/mysqld /var/log/mysql && \
 # Allow MariaDB to receive networking calls from your other containers
 RUN sed -i 's/127.0.0.1/0.0.0.0/g' /etc/mysql/mariadb.conf.d/50-server.cnf
 
-# Create a dedicated, secure initialization script with corrected SQL quotes
+# Dedicated, robust initialization script using mysqld --bootstrap
 RUN echo '#!/bin/sh\n\
+set -e\n\
 if [ ! -d "/var/lib/mysql/mysql" ]; then\n\
-  mysql_install_db --user=mysql --datadir=/var/lib/mysql\n\
-  mysqld --user=mysql --datadir=/var/lib/mysql &\n\
-  pid="$!" \n\
-  sleep 5\n\
-  mysql -e "CREATE DATABASE IF NOT EXISTS \`$MARIADB_DATABASE\`;"\n\
-  mysql -e "GRANT ALL PRIVILEGES ON \`$MARIADB_DATABASE\`.* TO \`$MARIADB_USER\`@\`%\` IDENTIFIED BY '\''$MARIADB_PASSWORD'\'';"\n\
-  mysql -e "SET PASSWORD FOR \`root\`@\`localhost\` = PASSWORD('\''$MARIADB_ROOT_PASSWORD'\'');"\n\
-  mysql -e "FLUSH PRIVILEGES;"\n\
-  kill "$pid"\n\
-  sleep 2\n\
+  echo "=> Initializing database directory..."\n\
+  mysql_install_db --user=mysql --datadir=/var/lib/mysql > /dev/null\n\
+\n\
+  echo "=> Executing SQL bootstrap initialization..."\n\
+  mysqld --user=mysql --datadir=/var/lib/mysql --bootstrap << EOF\n\
+FLUSH PRIVILEGES;\n\
+ALTER USER '\''root'\''@'\''localhost'\'' IDENTIFIED BY '\''$MARIADB_ROOT_PASSWORD'\'';\n\
+CREATE DATABASE IF NOT EXISTS \`$MARIADB_DATABASE\`;\n\
+GRANT ALL PRIVILEGES ON \`$MARIADB_DATABASE\`.* TO \`$MARIADB_USER\`@\`%\` IDENTIFIED BY '\''$MARIADB_PASSWORD'\'';\n\
+FLUSH PRIVILEGES;\n\
+EOF\n\
+  echo "=> Bootstrap completed successfully."\n\
 fi\n\
+\n\
+echo "=> Starting MariaDB in foreground..."\n\
 exec mysqld --user=mysql --datadir=/var/lib/mysql' > /init.sh && chmod +x /init.sh
 
 CMD ["/init.sh"]
