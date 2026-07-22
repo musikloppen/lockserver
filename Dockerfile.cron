@@ -15,6 +15,6 @@ RUN chmod 0644 /etc/crontab && \
 	chmod +x /usr/local/bin/clean_logs.pl /docker-entrypoint.sh && \
 	touch /var/log/cron.log
 
-ENV PERL5LIB=/usr/local/lib/perl
+ENV PERL5LIB=/usr/local/share/perl5
 
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]
