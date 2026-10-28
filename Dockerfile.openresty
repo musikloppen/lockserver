@@ -1,12 +1,13 @@
 FROM perl-base:latest
 
-# 1. Install Nginx, explicit Lua and NDK module packages, build tools, and Lua 5.1 headers
+# 1. Install Nginx, explicit Lua and NDK module packages, build tools, Lua 5.1 headers, and bitwise operations
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	nginx-extras \
 	libnginx-mod-http-ndk \
 	libnginx-mod-http-lua \
 	lua5.1 \
 	liblua5.1-0-dev \
+	lua-bitop \
 	git \
 	build-essential \
 	libssl-dev \
@@ -29,7 +30,7 @@ RUN cd /tmp \
 # 3. Clear default symlinks so nginx.conf manages load order explicitly
 RUN rm -rf /etc/nginx/modules-enabled/*
 
-# 4. Install required Lua libraries via upgraded Luarocks
+# 4. Install required Lua libraries via upgraded LuaRocks
 RUN luarocks install lua-resty-http
 RUN luarocks install lua-resty-dns
 RUN luarocks install luafilesystem
@@ -48,7 +49,9 @@ RUN mkdir -p /usr/local/openresty/html /usr/local/openresty/lualib/dnsbl_whiteli
 COPY htdocs/backend_down.html /usr/local/openresty/html/backend_down.html
 COPY htdocs/blocked_ip.html /usr/local/openresty/html/blocked_ip.html
 
-ENV LUA_PATH="/usr/local/openresty/lualib/?.lua;/usr/local/openresty/lualib/?/init.lua;;"
+# 8. Configure Lua search paths for both pure Lua libraries and compiled C shared modules (.so)
+ENV LUA_PATH="/usr/local/openresty/lualib/?.lua;/usr/local/openresty/lualib/?/init.lua;/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua;;"
+ENV LUA_CPATH="/usr/lib/aarch64-linux-gnu/lua/5.1/?.so;/usr/lib/lua/5.1/?.so;/usr/local/lib/lua/5.1/?.so;;"
 
 EXPOSE 80 443
 
