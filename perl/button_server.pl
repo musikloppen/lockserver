@@ -67,16 +67,17 @@ my $REG_DIGITAL_IN= 0x00; # Digital input register on SM-I-029
 my $i2c;
 
 if (!$DEBUG) {
+	my $val;
 	eval {
 		$i2c = Device::SMBus->new(
 			I2CBusDevicePath => $I2C_BUS,
 			I2CDeviceAddress => $I2C_ADDR,
 		);
-		# Probe by reading the digital inputs register
-		my $val = $i2c->readByteData($REG_DIGITAL_IN);
+		$val = $i2c->readByteData($REG_DIGITAL_IN);
 	};
-	if ($@ || !$i2c) {
-		log_docker('err', "Failed to read input from SM-I-029 HAT: $@");
+	if ($@ || !defined($val) || $val < 0) {
+		$i2c = undef;
+		log_docker('err', "Failed to read input from SM-I-029 HAT: no device found at 0x" . sprintf("%02X", $I2C_ADDR));
 	} else {
 		log_docker('info', "SM-I-029 HAT inputs initialized on I2C bus (stack $HAT_STACK, addr " . sprintf("0x%02X", $I2C_ADDR) . ")");
 	}
@@ -89,11 +90,12 @@ while (1) {
 	if (!$DEBUG) {
 		my $val = 0;
 		if ($i2c) {
-			eval {
-				$val = $i2c->readByteData($REG_DIGITAL_IN);
-			};
-			if ($@) {
-				log_docker('err', "I2C read error: $@");
+			my $raw = eval { $i2c->readByteData($REG_DIGITAL_IN) };
+			if (defined $raw && $raw >= 0) {
+				$val = $raw;
+			} else {
+				# Bus error or device disconnected; safeguard against false triggers
+				$val = 0;
 			}
 		}
 

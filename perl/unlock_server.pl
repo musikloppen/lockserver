@@ -49,16 +49,17 @@ my $REG_RELAYS    = 0x01; # Relays 1-4 register on SM-I-029
 my $i2c;
 
 if (!$DEBUG) {
+	my $val;
 	eval {
 		$i2c = Device::SMBus->new(
 			I2CBusDevicePath => $I2C_BUS,
 			I2CDeviceAddress => $I2C_ADDR,
 		);
-		# Probe by reading the current relay state register
-		my $val = $i2c->readByteData($REG_RELAYS);
+		$val = $i2c->readByteData($REG_RELAYS);
 	};
-	if ($@ || !$i2c) {
-		log_docker('err', "Failed to communicate with SM-I-029 HAT at stack $HAT_STACK: $@");
+	if ($@ || !defined($val) || $val < 0) {
+		$i2c = undef;
+		log_docker('err', "Failed to communicate with SM-I-029 HAT at stack $HAT_STACK on $I2C_BUS (no response at 0x" . sprintf("%02X", $I2C_ADDR) . ")");
 	} else {
 		log_docker('info', "SM-I-029 HAT detected on I2C bus (stack $HAT_STACK, addr " . sprintf("0x%02X", $I2C_ADDR) . ")");
 	}
@@ -378,8 +379,12 @@ sub ls_unlock {
 		if ($i2c) {
 			eval {
 				my $cur = $i2c->readByteData($REG_RELAYS);
-				my $mask = 1 << ($RELAY_CH - 1);
-				$i2c->writeByteData($REG_RELAYS, $cur | $mask);
+				if (defined $cur && $cur >= 0) {
+					my $mask = 1 << ($RELAY_CH - 1);
+					$i2c->writeByteData($REG_RELAYS, $cur | $mask);
+				} else {
+					log_docker('err', "I2C read failed before setting relay ON");
+				}
 			};
 			if ($@) {
 				log_docker('err', "I2C error setting relay ON: $@");
@@ -396,8 +401,12 @@ sub ls_lock {
 		if ($i2c) {
 			eval {
 				my $cur = $i2c->readByteData($REG_RELAYS);
-				my $mask = 1 << ($RELAY_CH - 1);
-				$i2c->writeByteData($REG_RELAYS, $cur & ~$mask);
+				if (defined $cur && $cur >= 0) {
+					my $mask = 1 << ($RELAY_CH - 1);
+					$i2c->writeByteData($REG_RELAYS, $cur & ~$mask);
+				} else {
+					log_docker('err', "I2C read failed before setting relay OFF");
+				}
 			};
 			if ($@) {
 				log_docker('err', "I2C error setting relay OFF: $@");
