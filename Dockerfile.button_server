@@ -1,11 +1,6 @@
 FROM perl-base:latest
 
-# Build and install Sequent Microsystems 4rel4in CLI
-RUN git clone https://github.com/SequentMicrosystems/4rel4in-rpi.git /tmp/4rel4in-rpi && \
-	cd /tmp/4rel4in-rpi && \
-	make && \
-	make install && \
-	rm -rf /tmp/4rel4in-rpi
+RUN cpanm Device::SMBus
 
 COPY perl/button_server.pl /usr/local/bin/button_server.pl
 RUN chmod +x /usr/local/bin/button_server.pl

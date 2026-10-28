@@ -4,12 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	libproc-simple-perl \
 	&& rm -rf /var/lib/apt/lists/*
 
-# Build and install Sequent Microsystems 4rel4in CLI
-RUN git clone https://github.com/SequentMicrosystems/4rel4in-rpi.git /tmp/4rel4in-rpi && \
-	cd /tmp/4rel4in-rpi && \
-	make && \
-	make install && \
-	rm -rf /tmp/4rel4in-rpi
+RUN cpanm Device::SMBus
 
 COPY perl/unlock_server.pl /usr/local/bin/unlock_server.pl
 RUN chmod +x /usr/local/bin/unlock_server.pl

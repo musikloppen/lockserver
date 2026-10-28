@@ -6,6 +6,7 @@ use Data::Dumper;
 use Redis;
 use DBI;
 use Time::HiRes qw( usleep );
+use Device::SMBus;
 
 use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
@@ -54,18 +55,30 @@ if ($@ || !$redis) {
 	log_warn("Failed to connect to Redis at $redis_host:$redis_port: $@");
 }
 
-# 4rel4in HAT configuration: Stack 0, Input Channels 1 and 2
-my $HAT_STACK = 0;
-my $INPUT_CH1 = 1;
-my $INPUT_CH2 = 2;
+# Sequent Microsystems SM-I-029 I2C Configuration
+my $I2C_BUS       = $ENV{I2C_BUS} || '/dev/i2c-1';
+my $HAT_STACK     = 0;
+my $I2C_BASE_ADDR = 0x38;
+my $I2C_ADDR      = $I2C_BASE_ADDR + $HAT_STACK;
+my $INPUT_CH1     = 1;
+my $INPUT_CH2     = 2;
+my $REG_DIGITAL_IN= 0x00; # Digital input register on SM-I-029
+
+my $i2c;
 
 if (!$DEBUG) {
-	# Verify the 4rel4in command line utility can communicate with the HAT
-	my $probe = `4rel4in $HAT_STACK inread $INPUT_CH1 2>&1`;
-	if ($? != 0) {
-		log_docker('err', "Failed to read input from 4rel4in HAT: $probe");
+	eval {
+		$i2c = Device::SMBus->new(
+			I2CBusDevicePath => $I2C_BUS,
+			I2CDeviceAddress => $I2C_ADDR,
+		);
+		# Probe by reading the digital inputs register
+		my $val = $i2c->readByteData($REG_DIGITAL_IN);
+	};
+	if ($@ || !$i2c) {
+		log_docker('err', "Failed to read input from SM-I-029 HAT: $@");
 	} else {
-		log_docker('info', "4rel4in HAT inputs initialized on I2C bus (stack $HAT_STACK)");
+		log_docker('info', "SM-I-029 HAT inputs initialized on I2C bus (stack $HAT_STACK, addr " . sprintf("0x%02X", $I2C_ADDR) . ")");
 	}
 } else {
 	log_docker('info', "[DEBUG MODE] Button input pooling disabled. Sleeping idly.");
@@ -74,10 +87,21 @@ if (!$DEBUG) {
 log_docker('info', "$0 started");
 while (1) {
 	if (!$DEBUG) {
-		my $in1 = `4rel4in $HAT_STACK inread $INPUT_CH1`;
-		chomp($in1) if defined $in1;
-		my $in2 = `4rel4in $HAT_STACK inread $INPUT_CH2`;
-		chomp($in2) if defined $in2;
+		my $val = 0;
+		if ($i2c) {
+			eval {
+				$val = $i2c->readByteData($REG_DIGITAL_IN);
+			};
+			if ($@) {
+				log_docker('err', "I2C read error: $@");
+			}
+		}
+
+		my $mask1 = 1 << ($INPUT_CH1 - 1);
+		my $mask2 = 1 << ($INPUT_CH2 - 1);
+
+		my $in1 = ($val & $mask1) ? "1" : "0";
+		my $in2 = ($val & $mask2) ? "1" : "0";
 
 		if (($in1 && $in1 eq "1") || ($in2 && $in2 eq "1")) {
 			$redis->publish('lock_events', "unlock_button");

@@ -8,6 +8,7 @@ use AnyEvent::Redis;
 use DBI;
 use Time::HiRes qw( usleep );
 use Proc::Simple;
+use Device::SMBus;
 
 use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
@@ -37,17 +38,29 @@ else {
 my $LOCK_PIN = get_defaults('lock_pin') || 0;
 my $CONTACT_PIN = get_defaults('contact_pin') || 13;
 
-# 4rel4in HAT configuration: Stack 0, Relay 1
-my $HAT_STACK = 0;
-my $RELAY_CH  = 1;
+# Sequent Microsystems SM-I-029 I2C Configuration
+my $I2C_BUS       = $ENV{I2C_BUS} || '/dev/i2c-1';
+my $HAT_STACK     = 0;
+my $I2C_BASE_ADDR = 0x38;
+my $I2C_ADDR      = $I2C_BASE_ADDR + $HAT_STACK;
+my $RELAY_CH      = 1;
+my $REG_RELAYS    = 0x01; # Relays 1-4 register on SM-I-029
+
+my $i2c;
 
 if (!$DEBUG) {
-	# Verify the 4rel4in command line utility is installed and functional
-	my $probe = `4rel4in $HAT_STACK rread $RELAY_CH 2>&1`;
-	if ($? != 0) {
-		log_docker('err', "Failed to communicate with 4rel4in HAT at stack $HAT_STACK: $probe");
+	eval {
+		$i2c = Device::SMBus->new(
+			I2CBusDevicePath => $I2C_BUS,
+			I2CDeviceAddress => $I2C_ADDR,
+		);
+		# Probe by reading the current relay state register
+		my $val = $i2c->readByteData($REG_RELAYS);
+	};
+	if ($@ || !$i2c) {
+		log_docker('err', "Failed to communicate with SM-I-029 HAT at stack $HAT_STACK: $@");
 	} else {
-		log_docker('info', "4rel4in HAT detected on I2C bus (stack $HAT_STACK)");
+		log_docker('info', "SM-I-029 HAT detected on I2C bus (stack $HAT_STACK, addr " . sprintf("0x%02X", $I2C_ADDR) . ")");
 	}
 } else {
 	log_docker('info', "[DEBUG MODE] Skipping physical hardware library initialization");
@@ -362,7 +375,16 @@ sub unlock_button {
 
 sub ls_unlock {
 	if (!$DEBUG) {
-		system("4rel4in", $HAT_STACK, "rwrite", $RELAY_CH, "1");
+		if ($i2c) {
+			eval {
+				my $cur = $i2c->readByteData($REG_RELAYS);
+				my $mask = 1 << ($RELAY_CH - 1);
+				$i2c->writeByteData($REG_RELAYS, $cur | $mask);
+			};
+			if ($@) {
+				log_docker('err', "I2C error setting relay ON: $@");
+			}
+		}
 #		`echo 0 >/sys/class/leds/ath9k_htc-phy0/brightness ; echo 1 >/sys/class/leds/ath9k_htc-phy0/brightness`;
 	} else {
 		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY UNLOCKED");
@@ -371,7 +393,16 @@ sub ls_unlock {
 
 sub ls_lock {
 	if (!$DEBUG) {
-		system("4rel4in", $HAT_STACK, "rwrite", $RELAY_CH, "0");
+		if ($i2c) {
+			eval {
+				my $cur = $i2c->readByteData($REG_RELAYS);
+				my $mask = 1 << ($RELAY_CH - 1);
+				$i2c->writeByteData($REG_RELAYS, $cur & ~$mask);
+			};
+			if ($@) {
+				log_docker('err', "I2C error setting relay OFF: $@");
+			}
+		}
 #		`echo "phy0tpt"> /sys/class/leds/ath9k_htc-phy0/trigger`;
 	} else {
 		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY LOCKED");
