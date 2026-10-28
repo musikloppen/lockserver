@@ -1,0 +1,41 @@
+FROM perl-base:latest
+
+LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
+
+# Installér MariaDB server (spejle er allerede håndteret i perl-base)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    mariadb-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fix mapperettigheder og runtime-krav
+RUN mkdir -p /var/lib/mysql /var/run/mysqld /var/log/mysql && \
+    chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql && \
+    chmod 777 /var/run/mysqld
+
+# Tillad eksterne forbindelser fra de øvrige containere
+RUN sed -i 's/127.0.0.1/0.0.0.0/g' /etc/mysql/mariadb.conf.d/50-server.cnf
+
+# Bootstrap-initialiseringsscript
+RUN echo '#!/bin/sh\n\
+set -e\n\
+if [ ! -d "/var/lib/mysql/mysql" ]; then\n\
+  echo "=> Initializing database directory..."\n\
+  mysql_install_db --user=mysql --datadir=/var/lib/mysql > /dev/null\n\
+\n\
+  echo "=> Executing SQL bootstrap initialization..."\n\
+  mysqld --user=mysql --datadir=/var/lib/mysql --bootstrap << EOF\n\
+FLUSH PRIVILEGES;\n\
+ALTER USER '\''root'\''@'\''localhost'\'' IDENTIFIED BY '\''$MARIADB_ROOT_PASSWORD'\'';\n\
+CREATE DATABASE IF NOT EXISTS \`$MARIADB_DATABASE\`;\n\
+GRANT ALL PRIVILEGES ON \`$MARIADB_DATABASE\`.* TO \`$MARIADB_USER\`@\`%\` IDENTIFIED BY '\''$MARIADB_PASSWORD'\'';\n\
+FLUSH PRIVILEGES;\n\
+EOF\n\
+  echo "=> Bootstrap completed successfully."\n\
+fi\n\
+\n\
+echo "=> Starting MariaDB in foreground..."\n\
+exec mysqld --user=mysql --datadir=/var/lib/mysql' > /init.sh && chmod +x /init.sh
+
+EXPOSE 3306
+
+CMD ["/init.sh"]

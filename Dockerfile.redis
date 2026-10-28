@@ -1,14 +1,11 @@
-FROM arm32v5/debian:buster-slim
+FROM perl-base:latest
 
 LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
 
-# Fix legacy archive endpoints for the old Debian version
-RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
-    sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
-    sed -i '/debian-updates/d' /etc/apt/sources.list
-
-# Install native ARMv6 Redis server
-RUN apt-get update && apt-get install -y redis-server && rm -rf /var/lib/apt/lists/*
+# Install Redis server (spejle er allerede fikset i perl-base)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    redis-server \
+    && rm -rf /var/lib/apt/lists/*
 
 # Expose Redis port
 EXPOSE 6379

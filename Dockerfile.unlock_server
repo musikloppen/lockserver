@@ -4,13 +4,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	libproc-simple-perl \
 	&& rm -rf /var/lib/apt/lists/*
 
-# Download and compile bcm2835 library
-RUN wget http://www.airspayce.com/mikem/bcm2835/bcm2835-1.71.tar.gz && \
-	tar zxvf bcm2835-1.71.tar.gz && \
-	cd bcm2835-1.71 && ./configure && make && make install && \
-	cd .. && rm -rf bcm2835-1.71*
-
-RUN cpanm Device::BCM2835
+# Build and install Sequent Microsystems 4rel4in CLI
+RUN git clone https://github.com/SequentMicrosystems/4rel4in-rpi.git /tmp/4rel4in-rpi && \
+	cd /tmp/4rel4in-rpi && \
+	make && \
+	make install && \
+	rm -rf /tmp/4rel4in-rpi
 
 COPY perl/unlock_server.pl /usr/local/bin/unlock_server.pl
 RUN chmod +x /usr/local/bin/unlock_server.pl
