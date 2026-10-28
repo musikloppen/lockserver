@@ -1,4 +1,4 @@
-FROM arm32v5/debian:buster-slim
+FROM debian:buster
 
 LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
 
@@ -6,12 +6,16 @@ LABEL maintainer="Kristoffer Ek <stoffer@skulp.net>"
 RUN echo "deb [check-valid-until=no] http://archive.debian.org/debian/ buster main contrib non-free" > /etc/apt/sources.list && \
 	echo "deb [check-valid-until=no] http://archive.debian.org/debian-security buster/updates main contrib non-free" >> /etc/apt/sources.list
 
-# Install all common system dependencies and build tools
+# Install all common system dependencies, hardware libraries, and build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	tzdata \
 	build-essential \
+	git \
 	wget \
 	libssl-dev \
+	libi2c-dev \
+	i2c-tools \
+	libdevice-serialport-perl \
 	libdbi-perl \
 	libdbd-mysql-perl \
 	libemail-mime-perl \
@@ -24,7 +28,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	libio-socket-ssl-perl \
 	libnet-ssleay-perl \
 	cpanminus \
+	ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
+
+# Build and install Sequent Microsystems 4rel4in CLI
+RUN git clone https://github.com/SequentMicrosystems/4rel4in-rpi.git /tmp/4rel4in-rpi && \
+	cd /tmp/4rel4in-rpi && \
+	make && \
+	make install && \
+	rm -rf /tmp/4rel4in-rpi
 
 # Install shared CPAN modules used across worker services
 RUN cpanm AnyEvent AnyEvent::Redis Redis

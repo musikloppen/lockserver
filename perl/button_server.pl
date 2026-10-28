@@ -9,13 +9,9 @@ use Time::HiRes qw( usleep );
 
 use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
+use LockServer::Utils qw(log_warn);
 
 my $DEBUG = $ENV{DEBUG} || 0;
-
-if (!$DEBUG) {
-	require Device::BCM2835;
-	Device::BCM2835->import();
-}
 
 my $MY_SERVER_ROOT = '/var/www/lock_server';
 
@@ -58,15 +54,19 @@ if ($@ || !$redis) {
 	log_warn("Failed to connect to Redis at $redis_host:$redis_port: $@");
 }
 
-if (!$DEBUG) {
-	# set up lock interface
-	Device::BCM2835::init() || die "Could not init library";
+# 4rel4in HAT configuration: Stack 0, Input Channels 1 and 2
+my $HAT_STACK = 0;
+my $INPUT_CH1 = 1;
+my $INPUT_CH2 = 2;
 
-	# inputs
-	Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_07,
-	                           &Device::BCM2835::BCM2835_GPIO_FSEL_INPT);
-	Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_11,
-	                           &Device::BCM2835::BCM2835_GPIO_FSEL_INPT);
+if (!$DEBUG) {
+	# Verify the 4rel4in command line utility can communicate with the HAT
+	my $probe = `4rel4in $HAT_STACK inread $INPUT_CH1 2>&1`;
+	if ($? != 0) {
+		log_docker('err', "Failed to read input from 4rel4in HAT: $probe");
+	} else {
+		log_docker('info', "4rel4in HAT inputs initialized on I2C bus (stack $HAT_STACK)");
+	}
 } else {
 	log_docker('info', "[DEBUG MODE] Button input pooling disabled. Sleeping idly.");
 }
@@ -74,7 +74,12 @@ if (!$DEBUG) {
 log_docker('info', "$0 started");
 while (1) {
 	if (!$DEBUG) {
-		if (Device::BCM2835::gpio_lev(&Device::BCM2835::RPI_V2_GPIO_P1_07) || Device::BCM2835::gpio_lev(&Device::BCM2835::RPI_V2_GPIO_P1_11)) {
+		my $in1 = `4rel4in $HAT_STACK inread $INPUT_CH1`;
+		chomp($in1) if defined $in1;
+		my $in2 = `4rel4in $HAT_STACK inread $INPUT_CH2`;
+		chomp($in2) if defined $in2;
+
+		if (($in1 && $in1 eq "1") || ($in2 && $in2 eq "1")) {
 			$redis->publish('lock_events', "unlock_button");
 			usleep(get_defaults('open_time') * 1000_000);
 		}

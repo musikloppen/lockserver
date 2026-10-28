@@ -15,13 +15,6 @@ use LockServer::Utils qw(log_info log_warn log_die);
 
 my $DEBUG = $ENV{DEBUG} || 0;
 
-# Dynamically load hardware libraries only if not debugging
-if (!$DEBUG) {
-	require Device::BCM2835;
-	Device::BCM2835->import();
-}
-
-#use constant MY_SERVER_ROOT => '/var/www/lock_server';
 my $MY_SERVER_ROOT = '/var/www/lock_server';
 
 # Force autoflush on output handlers so logs appear instantly in Docker
@@ -44,15 +37,18 @@ else {
 my $LOCK_PIN = get_defaults('lock_pin') || 0;
 my $CONTACT_PIN = get_defaults('contact_pin') || 13;
 
-if (!$DEBUG) {
-	# set up and clear lock interface
-	Device::BCM2835::init() || die "Could not init library";
+# 4rel4in HAT configuration: Stack 0, Relay 1
+my $HAT_STACK = 0;
+my $RELAY_CH  = 1;
 
-	 # outputs
-	Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_13,
-	                           &Device::BCM2835::BCM2835_GPIO_FSEL_OUTP);
-	Device::BCM2835::gpio_fsel(&Device::BCM2835::RPI_V2_GPIO_P1_26,
-	                           &Device::BCM2835::BCM2835_GPIO_FSEL_OUTP);
+if (!$DEBUG) {
+	# Verify the 4rel4in command line utility is installed and functional
+	my $probe = `4rel4in $HAT_STACK rread $RELAY_CH 2>&1`;
+	if ($? != 0) {
+		log_docker('err', "Failed to communicate with 4rel4in HAT at stack $HAT_STACK: $probe");
+	} else {
+		log_docker('info', "4rel4in HAT detected on I2C bus (stack $HAT_STACK)");
+	}
 } else {
 	log_docker('info', "[DEBUG MODE] Skipping physical hardware library initialization");
 }
@@ -80,7 +76,7 @@ $redis->subscribe('lock_events', sub {
 	my ($message, $channel) = @_;
 	return unless defined $message;
 
-	if ($message =~/^unlock_rfid:(.+)$/) {
+	if ($message =~ /^unlock_rfid:(.+)$/) {
 		handler_unlock_rfid(undef, $1);
 	}
 	elsif ($message eq 'unlock_button') {
@@ -366,8 +362,7 @@ sub unlock_button {
 
 sub ls_unlock {
 	if (!$DEBUG) {
-		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_13, 1);
-		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_26, 1);
+		system("4rel4in", $HAT_STACK, "rwrite", $RELAY_CH, "1");
 #		`echo 0 >/sys/class/leds/ath9k_htc-phy0/brightness ; echo 1 >/sys/class/leds/ath9k_htc-phy0/brightness`;
 	} else {
 		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY UNLOCKED");
@@ -376,8 +371,7 @@ sub ls_unlock {
 
 sub ls_lock {
 	if (!$DEBUG) {
-		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_13, 0);
-		Device::BCM2835::gpio_write(&Device::BCM2835::RPI_V2_GPIO_P1_26, 0);
+		system("4rel4in", $HAT_STACK, "rwrite", $RELAY_CH, "0");
 #		`echo "phy0tpt"> /sys/class/leds/ath9k_htc-phy0/trigger`;
 	} else {
 		log_docker('info', "[DEBUG MODE] Executing virtual action: RELAY LOCKED");

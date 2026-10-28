@@ -10,6 +10,7 @@ use Time::HiRes qw( usleep );
 
 use lib qw( /usr/local/share/perl5 );
 use LockServer::Db;
+use LockServer::Utils qw(log_warn);
 
 my $DEBUG = $ENV{DEBUG} || 0;
 

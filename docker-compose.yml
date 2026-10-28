@@ -93,8 +93,7 @@ services:
       - DB_PASS=${DB_PASS}
       - TZ=Europe/Copenhagen
     devices:
-      - "/dev/gpiomem:/dev/gpiomem"
-      - "/dev/mem:/dev/mem"
+      - "/dev/i2c-1:/dev/i2c-1"
     privileged: true
     logging:
       driver: "syslog"
@@ -125,6 +124,8 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
       - TZ=Europe/Copenhagen
+    devices:
+      - "/dev/ttyAMA0:/dev/ttyAMA0"
     privileged: true
     logging:
       driver: "syslog"
@@ -156,8 +157,7 @@ services:
       - DB_PASS=${DB_PASS}
       - TZ=Europe/Copenhagen
     devices:
-      - "/dev/gpiomem:/dev/gpiomem"
-      - "/dev/mem:/dev/mem"
+      - "/dev/i2c-1:/dev/i2c-1"
     privileged: true
     logging:
       driver: "syslog"
