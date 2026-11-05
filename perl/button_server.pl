@@ -73,6 +73,7 @@ if (!$DEBUG) {
 			I2CBusDevicePath => $I2C_BUS,
 			I2CDeviceAddress => $I2C_ADDR,
 		);
+		# Probe by reading the digital inputs register
 		$val = $i2c->readByteData($REG_DIGITAL_IN);
 	};
 	if ($@ || !defined($val) || $val < 0) {
@@ -86,16 +87,21 @@ if (!$DEBUG) {
 }
 
 log_docker('info', "$0 started");
+
+# Initialize previous state tracking (1 = idle / pulled up to HIGH by default)
+my $last_in1 = "1";
+my $last_in2 = "1";
+
 while (1) {
 	if (!$DEBUG) {
-		my $val = 0;
+		my $val = 0xFF; # Default to HIGH (0xFF) on failure so disconnected/failed bus does not trigger unlock
 		if ($i2c) {
 			my $raw = eval { $i2c->readByteData($REG_DIGITAL_IN) };
 			if (defined $raw && $raw >= 0) {
 				$val = $raw;
 			} else {
-				# Bus error or device disconnected; safeguard against false triggers
-				$val = 0;
+				# Bus error or device disconnected; keep lines high to prevent unintended triggers
+				$val = 0xFF;
 			}
 		}
 
@@ -105,10 +111,16 @@ while (1) {
 		my $in1 = ($val & $mask1) ? "1" : "0";
 		my $in2 = ($val & $mask2) ? "1" : "0";
 
-		if (($in1 && $in1 eq "1") || ($in2 && $in2 eq "1")) {
+		# Edge detection (falling edge): trigger only when contact transitions from open (1) to closed to GND (0)
+		if (($last_in1 eq "1" && $in1 eq "0") || ($last_in2 eq "1" && $in2 eq "0")) {
 			$redis->publish('lock_events', "unlock_button");
 			usleep(get_defaults('open_time') * 1000_000);
 		}
+
+		# Record state for edge comparison on subsequent cycles
+		$last_in1 = $in1;
+		$last_in2 = $in2;
+
 		usleep(100_000);
 	} else {
 		# Keep running cleanly on Mac without infinite CPU execution loops
