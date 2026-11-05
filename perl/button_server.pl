@@ -58,7 +58,7 @@ if ($@ || !$redis) {
 # Sequent Microsystems SM-I-029 I2C Configuration
 my $I2C_BUS       = $ENV{I2C_BUS} || '/dev/i2c-1';
 my $HAT_STACK     = 0;
-my $I2C_BASE_ADDR = 0x38;
+my $I2C_BASE_ADDR = 0x0e;
 my $I2C_ADDR      = $I2C_BASE_ADDR + $HAT_STACK;
 my $INPUT_CH1     = 1;
 my $INPUT_CH2     = 2;

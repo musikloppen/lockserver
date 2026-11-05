@@ -41,7 +41,7 @@ my $CONTACT_PIN = get_defaults('contact_pin') || 13;
 # Sequent Microsystems SM-I-029 I2C Configuration
 my $I2C_BUS       = $ENV{I2C_BUS} || '/dev/i2c-1';
 my $HAT_STACK     = 0;
-my $I2C_BASE_ADDR = 0x38;
+my $I2C_BASE_ADDR = 0x0e;
 my $I2C_ADDR      = $I2C_BASE_ADDR + $HAT_STACK;
 my $RELAY_CH      = 1;
 my $REG_RELAYS    = 0x01; # Relays 1-4 register on SM-I-029
