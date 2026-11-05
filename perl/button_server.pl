@@ -60,9 +60,9 @@ my $I2C_BUS       = $ENV{I2C_BUS} || '/dev/i2c-1';
 my $HAT_STACK     = 0;
 my $I2C_BASE_ADDR = 0x0e;
 my $I2C_ADDR      = $I2C_BASE_ADDR + $HAT_STACK;
-my $INPUT_CH1     = 1;
-my $INPUT_CH2     = 2;
-my $REG_DIGITAL_IN= 0x00; # Digital input register on SM-I-029
+my $INPUT_CH1     = 1;    # IN1 corresponds to bit 0 (mask: 1 << 0 = 0x01)
+my $INPUT_CH2     = 2;    # IN2 corresponds to bit 1 (mask: 1 << 1 = 0x02)
+my $REG_DIGITAL_IN= 0x03; # Digital input register on SM-I-029
 
 my $i2c;
 
@@ -80,7 +80,7 @@ if (!$DEBUG) {
 		$i2c = undef;
 		log_docker('err', "Failed to read input from SM-I-029 HAT: no device found at 0x" . sprintf("%02X", $I2C_ADDR));
 	} else {
-		log_docker('info', "SM-I-029 HAT inputs initialized on I2C bus (stack $HAT_STACK, addr " . sprintf("0x%02X", $I2C_ADDR) . ")");
+		log_docker('info', "SM-I-029 HAT inputs initialized on I2C bus (stack $HAT_STACK, addr " . sprintf("0x%02X", $I2C_ADDR) . ", reg " . sprintf("0x%02X", $REG_DIGITAL_IN) . ")");
 	}
 } else {
 	log_docker('info', "[DEBUG MODE] Button input pooling disabled. Sleeping idly.");
@@ -88,20 +88,20 @@ if (!$DEBUG) {
 
 log_docker('info', "$0 started");
 
-# Initialize previous state tracking (1 = idle / pulled up to HIGH by default)
-my $last_in1 = "1";
-my $last_in2 = "1";
+# Initialize previous state tracking (0 = idle / open circuit)
+my $last_in1 = "0";
+my $last_in2 = "0";
 
 while (1) {
 	if (!$DEBUG) {
-		my $val = 0xFF; # Default to HIGH (0xFF) on failure so disconnected/failed bus does not trigger unlock
+		my $val = 0x00; # Default to LOW (0x00) on failure to prevent false triggers
 		if ($i2c) {
 			my $raw = eval { $i2c->readByteData($REG_DIGITAL_IN) };
 			if (defined $raw && $raw >= 0) {
 				$val = $raw;
 			} else {
-				# Bus error or device disconnected; keep lines high to prevent unintended triggers
-				$val = 0xFF;
+				# Bus error or disconnected; fallback to 0 to prevent phantom triggers
+				$val = 0x00;
 			}
 		}
 
@@ -111,8 +111,9 @@ while (1) {
 		my $in1 = ($val & $mask1) ? "1" : "0";
 		my $in2 = ($val & $mask2) ? "1" : "0";
 
-		# Edge detection (falling edge): trigger only when contact transitions from open (1) to closed to GND (0)
-		if (($last_in1 eq "1" && $in1 eq "0") || ($last_in2 eq "1" && $in2 eq "0")) {
+		# Edge detection (rising edge): trigger only on transition from idle (0) to active (1)
+		if (($last_in1 eq "0" && $in1 eq "1") || ($last_in2 eq "0" && $in2 eq "1")) {
+			log_docker('info', "Button contact closed to GND (active 1). Triggering unlock.");
 			$redis->publish('lock_events', "unlock_button");
 			usleep(get_defaults('open_time') * 1000_000);
 		}
@@ -121,7 +122,7 @@ while (1) {
 		$last_in1 = $in1;
 		$last_in2 = $in2;
 
-		usleep(100_000);
+		usleep(100_000); # 100ms polling interval
 	} else {
 		# Keep running cleanly on Mac without infinite CPU execution loops
 		sleep(3600);
